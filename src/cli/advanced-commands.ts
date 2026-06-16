@@ -11,7 +11,7 @@
 
 import { Command } from 'commander';
 import { z } from 'zod';
-import { configManager } from './config-manager.js';
+import { configManager, type ConfigKey } from './config-manager.js'; // ✅ 添加类型导入
 
 export function registerAdvancedCommands(program: Command): void {
     // ============================================================
@@ -43,30 +43,47 @@ export function registerAdvancedCommands(program: Command): void {
             if (validated.port) console.log(`🔌 端口: ${validated.port}`);
         });
 
-    // config get <key> - 获取配置项
+    // src/cli/advanced-commands.ts (config 相关部分更新)
+
+    // config get - 使用 configManager.getValue()
     configCmd
         .command('get <key>')
         .description('获取配置项')
-        .action((key) => {
+        .action((key: string) => {
             const config = configManager.get();
-            const value = config[key as keyof typeof config];
-            if (value !== undefined) {
-                console.log(`📖 ${key} = ${value}`);
+            if (key in config) {
+                const value = configManager.getValue(key as ConfigKey);
+                console.log(`📖 ${key} = ${JSON.stringify(value)}`);
             } else {
                 console.log(`❌ 配置项 "${key}" 不存在`);
+                console.log('💡 可用配置项:', Object.keys(config).join(', '));
             }
         });
 
-    // config list - 列出所有配置
+    // config list - 使用 configManager.print()
     configCmd
         .command('list')
         .description('列出所有配置')
+        .option('--show-secrets', '显示敏感信息（如 API Key）')
+        .action((options) => {
+            if (options.showSecrets) {
+                const config = configManager.get();
+                console.log('📋 当前配置:');
+                Object.entries(config).forEach(([key, value]) => {
+                    console.log(`  ${key}: ${JSON.stringify(value)}`);
+                });
+            } else {
+                configManager.print();
+            }
+        });
+
+    // config reload - 新增热重载命令
+    configCmd
+        .command('reload')
+        .description('热重载配置文件')
         .action(() => {
-            const config = configManager.get();
-            console.log('📋 当前配置:');
-            Object.entries(config).forEach(([key, value]) => {
-                console.log(`  ${key}: ${value}`);
-            });
+            configManager.reload();
+            console.log('✅ 配置已重新加载');
         });
 
     // ============================================================
