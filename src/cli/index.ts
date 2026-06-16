@@ -1,7 +1,53 @@
 #!/usr/bin/env node
-
+import { Command } from 'commander';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { registerAdvancedCommands } from './advanced-commands.js';
+// import { configManager } from './config-manager.js';
+// import { checkNodeVersion } from './env-check.js';
+// import { setupGracefulShutdown } from './error-handler.js';
+// ============ 1. 环境检查 ============
+// checkNodeVersion();
+// setupGracefulShutdown();
+
+// ============ 2. 创建 CLI 主程序 ============
+const program = new Command();
+program
+    .name('agent')
+    .description('SmartAgent CLI - 智能编程助手')
+    .version('1.0.0');
+
+// ============ 3. 注册所有命令 ============
+registerAdvancedCommands(program);
+
+// ============ 4. 额外的交互式命令：chat ============
+program
+    .command('chat')
+    .description('进入交互式对话模式')
+    .option('-m, --model <model>', '指定模型')
+    .action(async (options) => {
+        console.log('💬 进入 Chat 模式 (按 Ctrl+C 退出)');
+        // TODO: 实现 chat 逻辑
+    });
+
+// ============ 5. 额外命令：config list ============
+// program
+//     .command('config list')
+//     .description('列出当前所有配置')
+//     .action(() => {
+//         const config = configManager.get();
+//         console.log('📋 当前配置:');
+//         Object.entries(config).forEach(([key, value]) => {
+//             console.log(`  ${key}: ${value}`);
+//         });
+//     });
+// ============ 6. 解析参数 ============
+program.parse(process.argv);
+
+// ============ 7. 如果没有参数，显示帮助 ============
+if (!process.argv.slice(2).length) {
+    program.outputHelp();
+}
 
 // ============ 类型定义 ============
 interface Config {
