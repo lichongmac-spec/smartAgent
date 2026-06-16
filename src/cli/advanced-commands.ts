@@ -1,55 +1,103 @@
-// src/cli/advanced-commands.ts
+/**
+ * 命令注册模块
+ * 
+ * 职责：
+ * 1. 注册所有 CLI 命令（config、ask、chat 等）
+ * 2. 每个命令的 action 只做参数接收和调用 service
+ * 3. 不包含业务逻辑（业务逻辑放在 service 层）
+ * 
+ * 扩展方式：在此文件中添加新的 .command() 链
+ */
+
 import { Command } from 'commander';
 import { z } from 'zod';
+import { configManager } from './config-manager.js';
 
 export function registerAdvancedCommands(program: Command): void {
-    // ============ config 命令组 ============
-    // 注意：只调用一次 .command('config')，用多个子命令
+    // ============================================================
+    //  config 命令组 - 配置管理
+    //  子命令: set, get, list
+    // ============================================================
     const configCmd = program.command('config').description('配置管理');
 
-    // config set
+    // config set <key> <value> - 设置配置项
     configCmd
         .command('set <key> <value>')
         .description('设置配置项')
         .option('-g, --global', '写入全局配置')
         .option('--port <number>', '端口号', (val) => parseInt(val, 10))
         .action((key, value, options) => {
+            // 使用 Zod 校验输入参数
             const schema = z.object({
-                key: z.string().min(1),
-                value: z.string().min(1),
+                key: z.string().min(1, 'key 不能为空'),
+                value: z.string().min(1, 'value 不能为空'),
                 port: z.number().optional(),
             });
             const validated = schema.parse({ key, value, port: options.port });
+
+            // 写入配置（目前写入内存，后续可持久化）
+            configManager.set(validated.key as any, validated.value);
+
             console.log(`✅ 设置 ${validated.key}=${validated.value}`);
             if (options.global) console.log('🌍 写入全局配置');
-            if (options.port) console.log(`🔌 端口: ${options.port}`);
+            if (validated.port) console.log(`🔌 端口: ${validated.port}`);
         });
 
-    // config get
+    // config get <key> - 获取配置项
     configCmd
         .command('get <key>')
         .description('获取配置项')
         .action((key) => {
-            console.log(`📖 配置 ${key} = (模拟值)`);
+            const config = configManager.get();
+            const value = config[key as keyof typeof config];
+            if (value !== undefined) {
+                console.log(`📖 ${key} = ${value}`);
+            } else {
+                console.log(`❌ 配置项 "${key}" 不存在`);
+            }
         });
 
-    // config list
+    // config list - 列出所有配置
     configCmd
         .command('list')
         .description('列出所有配置')
         .action(() => {
-            console.log('📋 配置列表:');
-            console.log('  model: deepseek-chat');
-            console.log('  maxTokens: 4096');
+            const config = configManager.get();
+            console.log('📋 当前配置:');
+            Object.entries(config).forEach(([key, value]) => {
+                console.log(`  ${key}: ${value}`);
+            });
         });
 
-    // ============ ask 命令 ============
+    // ============================================================
+    //  ask 命令 - 向 Agent 提问（核心命令）
+    // ============================================================
     program
         .command('ask <prompt>')
         .description('向 Agent 提问')
         .option('-m, --model <model>', '指定模型')
         .action((prompt, options) => {
+            const config = configManager.get();
+            const model = options.model || config.model;
+
             console.log(`💬 提问: ${prompt}`);
-            console.log(`🤖 模型: ${options.model || 'default'}`);
+            console.log(`🤖 模型: ${model}`);
+            // TODO: 后续接入真实的 LLM 调用
+        });
+
+    // ============================================================
+    //  chat 命令 - 交互式对话模式
+    // ============================================================
+    program
+        .command('chat')
+        .description('进入交互式对话模式')
+        .option('-m, --model <model>', '指定模型')
+        .action(async (options) => {
+            const config = configManager.get();
+            const model = options.model || config.model;
+
+            console.log(`💬 进入 Chat 模式 (模型: ${model})`);
+            console.log('   输入 /exit 退出，/clear 清屏');
+            // TODO: 后续接入 readline 循环 + LLM 调用
         });
 }
