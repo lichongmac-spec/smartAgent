@@ -15,9 +15,12 @@ console.log(pc.gray('━'.repeat(50)));
 import {
     AgentError,
     configError,
+    errorHandler,
+    ExitCode,
     fromError,
     handleError,
     networkError,
+    setErrorReporter,
     systemError,
     userError
 } from '../src/cli/error-handler.js';
@@ -93,7 +96,7 @@ test('创建系统错误（带原因）', () => {
 // 测试 4: 创建配置错误
 test('创建配置错误', () => {
     const error = configError('缺少 apiKey 配置');
-    if (error.type === 'CONFIG' && error.code === 1) {
+    if (error.type === 'CONFIG' && error.code === ExitCode.CONFIG_ERROR) {
         // 测试通过
     } else {
         throw new Error('配置错误创建失败');
@@ -130,21 +133,77 @@ test('错误链消息', () => {
 test('handleError 输出格式（用户错误）', () => {
     const error = userError('API Key 无效');
     let output = '';
-    const originalConsoleError = console.error;
-    console.error = (msg: string) => { output += msg + '\n'; };
+    const originalConsoleLog = console.log;
+    const originalExit = process.exit;
+
+    // mock console.log 捕获输出
+    console.log = ((...args: unknown[]) => {
+        output += args.join(' ') + '\n';
+    }) as typeof console.log;
+
+    // mock process.exit 防止杀死测试进程
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    process.exit = ((_code?: number) => {
+        throw new Error('EXIT_MOCK');
+    }) as any;
 
     try {
         handleError(error);
-    } catch {
-        // handleError 会 process.exit，这里用 try-catch 捕获
+    } catch (err: unknown) {
+        // handleError 会调用 process.exit，mock 抛出 'EXIT_MOCK'
+        if (!(err instanceof Error && err.message === 'EXIT_MOCK')) {
+            throw err;
+        }
     } finally {
-        console.error = originalConsoleError;
+        console.log = originalConsoleLog;
+        process.exit = originalExit;
     }
 
     if (output.includes('API Key 无效')) {
         // 测试通过
     } else {
         throw new Error('handleError 输出格式错误');
+    }
+});
+
+// 测试 8: AgentError.isType()
+test('AgentError.isType() 类型判断', () => {
+    const ue = userError('测试');
+    const ne = networkError('测试');
+    const se = systemError('测试');
+    const ce = configError('测试');
+
+    if (!ue.isType('USER')) throw new Error('isType(USER) 应返回 true');
+    if (!ne.isType('NETWORK')) throw new Error('isType(NETWORK) 应返回 true');
+    if (!se.isType('SYSTEM')) throw new Error('isType(SYSTEM) 应返回 true');
+    if (!ce.isType('CONFIG')) throw new Error('isType(CONFIG) 应返回 true');
+    if (ue.isType('NETWORK')) throw new Error('cross-type 不应返回 true');
+});
+
+// 测试 9: errorHandler 单例便捷入口
+test('errorHandler 单例便捷入口', () => {
+    if (typeof errorHandler.handle !== 'function') throw new Error('errorHandler.handle 应为函数');
+    if (typeof errorHandler.setup !== 'function') throw new Error('errorHandler.setup 应为函数');
+    if (typeof errorHandler.setReporter !== 'function') throw new Error('errorHandler.setReporter 应为函数');
+
+    const ue = errorHandler.create.user('测试');
+    if (ue.type !== 'USER') throw new Error('errorHandler.create.user 应创建 USER 错误');
+
+    const ce = errorHandler.create.config('测试');
+    if (ce.type !== 'CONFIG') throw new Error('errorHandler.create.config 应创建 CONFIG 错误');
+});
+
+// 测试 10: setErrorReporter + reportError 预留接口
+test('setErrorReporter 预留接口', () => {
+    // 验证不抛异常
+    try {
+        setErrorReporter((err: AgentError) => {
+            // 测试用 reporter（不执行实际逻辑）
+            void err;
+        });
+        // 通过：无异常抛出
+    } catch {
+        throw new Error('setErrorReporter 不应抛异常');
     }
 });
 

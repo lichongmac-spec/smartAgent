@@ -14,6 +14,14 @@
     "test:env-check:debug": "tsx --inspect-brk tests/env-check.test.ts",
     "test:logger": "tsx tests/logger.test.ts",
     "test:logger:debug": "tsx --inspect-brk tests/logger.test.ts",
+    "test:context": "tsx tests/context-aware.test.ts",
+    "test:context:debug": "tsx --inspect-brk tests/context-aware.test.ts",
+    "test:table": "tsx tests/table.test.ts",
+    "test:table:debug": "tsx --inspect-brk tests/table.test.ts",
+    "test:config": "tsx tests/config-manager.test.ts",
+    "test:config:debug": "tsx --inspect-brk tests/config-manager.test.ts",
+    "test:commands": "tsx tests/advanced-commands.test.ts",
+    "test:commands:debug": "tsx --inspect-brk tests/advanced-commands.test.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli/index.js",
@@ -49,6 +57,7 @@
     "dotenv": "^17.4.2",
     "ora": "^9.4.0",
     "picocolors": "^1.1.1",
+    "table": "^6.9.0",
     "zod": "^4.4.3"
   }
 }

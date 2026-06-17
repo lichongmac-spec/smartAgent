@@ -50,7 +50,12 @@ program
 registerAdvancedCommands(program);
 
 // ============ 5. 解析参数 ============
-program.parse(process.argv);
+// 过滤掉 pnpm/npm/yarn 注入的独立 '--'（会被 Commander 误判为 end-of-options）
+// 例如：pnpm cli -- ask "hello" --no-stream
+//       → argv: [node, script, '--', ask, hello, --no-stream]
+//       → 过滤后: [node, script, ask, hello, --no-stream]
+const cleanedArgv = process.argv.filter(arg => arg !== '--');
+program.parse(cleanedArgv);
 
 // ============ 6. 无参数时显示帮助 ============
 if (!process.argv.slice(2).length) {

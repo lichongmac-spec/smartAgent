@@ -268,7 +268,13 @@ export class ConfigManager {
         const safeConfig = { ...this.config };
         if (safeConfig.apiKey) {
             const key = safeConfig.apiKey;
-            safeConfig.apiKey = key.slice(0, 8) + '...' + key.slice(-4);
+            // 安全脱敏：按比例显示首尾
+            if (typeof key === 'string' && key.length > 8) {
+                const visible = Math.min(6, Math.floor(key.length / 3));
+                safeConfig.apiKey = key.slice(0, visible) + '…' + key.slice(-Math.min(4, visible));
+            } else if (typeof key === 'string' && key.length > 0) {
+                safeConfig.apiKey = '••••';
+            }
         }
         console.log('📋 当前配置:');
         Object.entries(safeConfig).forEach(([key, value]) => {

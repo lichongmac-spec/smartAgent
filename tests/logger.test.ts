@@ -20,6 +20,7 @@
 import pc from 'picocolors';
 
 import {
+    activeSpinner,
     configureLogger,
     getLoggerConfig,
     logger,
@@ -328,6 +329,13 @@ async function main() {
         assert(called2, 'noColor 模式也应正常执行');
 
         configureLogger({ isCI: false, noColor: false });
+    });
+
+    // activeSpinner getter
+    await runTest('activeSpinner getter', () => {
+        // 无活跃 spinner 时返回 null
+        const sp = activeSpinner();
+        assert(sp === null, '无活跃 spinner 时应返回 null');
     });
 
     // ============================================================
