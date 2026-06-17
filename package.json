@@ -22,6 +22,7 @@
     "test:config:debug": "tsx --inspect-brk tests/config-manager.test.ts",
     "test:commands": "tsx tests/advanced-commands.test.ts",
     "test:commands:debug": "tsx --inspect-brk tests/advanced-commands.test.ts",
+    "test:autocomplete": "tsx tests/autocomplete.test.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli/index.js",

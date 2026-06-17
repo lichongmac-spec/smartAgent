@@ -9,6 +9,7 @@
  * 扩展方式：在此文件中添加新的 .command() 链
  */
 
+import * as readline from 'readline';
 import { Command } from 'commander';
 import { configManager, type ConfigKey } from './config-manager.js';
 import { configError } from './error-handler.js';
@@ -21,6 +22,7 @@ import {
 } from './context-aware.js';
 import { logger } from './logger.js';
 import { renderKVTable } from './utils/table.js';
+import { setupAutocomplete, chatCompleter } from './utils/autocomplete.js';
 
 export function registerAdvancedCommands(program: Command): void {
     // ============================================================
@@ -226,39 +228,134 @@ export function registerAdvancedCommands(program: Command): void {
     // ============================================================
     program
         .command('chat')
-        .description('进入交互式对话模式')
+        .description('进入交互式对话模式（Tab 补全，/exit 退出）')
         .option('-m, --model <model>', '指定模型')
         .option('-s, --system-prompt <text>', '自定义系统提示词')
         .option('--no-stream', '禁用流式输出')
         .action(async (options: { model?: string; systemPrompt?: string; stream?: boolean }) => {
+            const { handleError } = await import('./error-handler.js');
+
             try {
                 const config = configManager.get();
                 const model = options.model || config.model;
+
+                // 非 TTY 环境：打印提示并退出（管道调用、CI 等）
+                if (!process.stdin.isTTY) {
+                    console.log(`💬 Chat 模式需要交互式终端。`);
+                    console.log(`   使用 ask 命令进行非交互式提问：agent ask "你的问题"`);
+                    return;
+                }
 
                 // 创建对话上下文（支持系统提示词）
                 const ctx = new ContextManager(options.systemPrompt);
 
                 console.log(`💬 进入 Chat 模式 (模型: ${model})`);
                 console.log(`   会话 ID: ${ctx.sessionId}`);
-                console.log('   输入消息开始对话，/exit 退出，/clear 清上下文');
+                console.log('   输入消息开始对话，Tab 补全命令，/exit 退出，/clear 清上下文');
                 if (options.systemPrompt) {
                     console.log(`   系统提示: ${options.systemPrompt.slice(0, 60)}...`);
                 }
                 console.log('');
 
-                // TODO: 后续接入 readline 循环 + 真实 LLM 调用
-                // 交互循环骨架：
-                //   const rl = readline.createInterface({ ... });
-                //   for await (const line of rl) {
-                //     if (line === '/exit') break;
-                //     if (line === '/clear') { ctx.clear(); continue; }
-                //     ctx.addUserMessage(line);
-                //     const response = await callLLM(ctx.getMessages());
-                //     ctx.addAssistantMessage(response);
-                //     printStream(...);
-                //   }
+                // 创建 readline 实例 + 安装补全
+                const rl = readline.createInterface({
+                    input: process.stdin,
+                    output: process.stdout,
+                    prompt: '> ',
+                    terminal: true,
+                });
+
+                // 安装 Tab 自动补全
+                setupAutocomplete(rl, chatCompleter);
+
+                // 交互循环
+                for await (const rawLine of rl) {
+                    const line = rawLine.trim();
+
+                    // 空行跳过
+                    if (!line) {
+                        rl.prompt();
+                        continue;
+                    }
+
+                    // ---- 控制命令 ----
+                    if (line === '/exit' || line === '/quit') {
+                        console.log('👋 再见！');
+                        rl.close();
+                        break;
+                    }
+
+                    if (line === '/clear') {
+                        ctx.clear();
+                        console.log('✅ 上下文已清空');
+                        rl.prompt();
+                        continue;
+                    }
+
+                    if (line === '/help') {
+                        console.log('');
+                        console.log('  📖 Chat 模式帮助');
+                        console.log('  ──────────────────────────');
+                        console.log('  /exit, /quit    退出对话');
+                        console.log('  /clear          清空上下文');
+                        console.log('  /help           显示此帮助');
+                        console.log('  /save           保存会话到文件');
+                        console.log('  /load           从文件恢复会话');
+                        console.log('  /stats          显示上下文统计');
+                        console.log('  Tab             自动补全命令');
+                        console.log('');
+                        rl.prompt();
+                        continue;
+                    }
+
+                    if (line === '/stats') {
+                        const stats = ctx.getStats();
+                        console.log('');
+                        logger.info(`📊 会话统计 | ID: ${ctx.sessionId}`);
+                        logger.info(`  消息数: ${stats.messageCount}`);
+                        logger.info(`  估算 tokens: ${stats.estimatedTokens}`);
+                        logger.info(`  总字符数: ${stats.totalChars}`);
+                        console.log('');
+                        rl.prompt();
+                        continue;
+                    }
+
+                    if (line === '/save') {
+                        console.log('📝 会话保存功能将在后续版本实现');
+                        rl.prompt();
+                        continue;
+                    }
+
+                    if (line === '/load') {
+                        console.log('📂 会话恢复功能将在后续版本实现');
+                        rl.prompt();
+                        continue;
+                    }
+
+                    // ---- 正常对话 ----
+                    ctx.addUserMessage(line);
+
+                    // TODO: 替换为真实 API 调用 + SSE 流式解析
+                    const mockResponse =
+                        `收到: "${line.length > 60 ? line.slice(0, 60) + '…' : line}"\n` +
+                        `当前上下文 ${ctx.length} 条消息，估算 ${ctx.totalTokens} tokens。`;
+
+                    if (options.stream !== false) {
+                        console.log('');
+                        await printStream(streamResponse(mockResponse, 15));
+                        console.log('');
+                    } else {
+                        console.log('');
+                        console.log(mockResponse);
+                        console.log('');
+                    }
+
+                    ctx.addAssistantMessage(mockResponse);
+                    rl.prompt();
+                }
+
+                rl.close();
             } catch (error) {
-                const { handleError } = await import('./error-handler.js');
                 handleError(error);
             }
         });

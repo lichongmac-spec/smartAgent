@@ -259,10 +259,18 @@ async function run() {
     // ============================================================
     //  chat 命令
     // ============================================================
-    await testAsync('chat 启动消息', async () => {
+    await testAsync('chat 非 TTY 环境提示', async () => {
         await resetConfig({});
-        const { stdout } = await runCommand(['chat']);
-        assertIncludes(stdout, 'Chat 模式');
+        // 模拟非 TTY 环境（测试环境下 chat 不能真正交互）
+        const origIsTTY = process.stdin.isTTY;
+        Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
+        try {
+            const { stdout } = await runCommand(['chat']);
+            assertIncludes(stdout, 'Chat 模式');
+            assertIncludes(stdout, '交互式终端');
+        } finally {
+            Object.defineProperty(process.stdin, 'isTTY', { value: origIsTTY, configurable: true });
+        }
     });
 
     // ============================================================
