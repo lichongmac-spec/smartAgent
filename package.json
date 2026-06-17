@@ -8,8 +8,10 @@
     "agent": "./dist/cli/index.js"
   },
   "scripts": {
-     "test:error": "tsx tests/error-handler.test.ts",
+    "test:error": "tsx tests/error-handler.test.ts",
     "test:error:debug": "tsx --inspect-brk tests/error-handler.test.ts",
+    "test:logger": "tsx tests/logger.test.ts",
+    "test:logger:debug": "tsx --inspect-brk tests/logger.test.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli/index.js",

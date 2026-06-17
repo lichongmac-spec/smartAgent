@@ -19,7 +19,8 @@
   },
   "exclude": [
     "./node_modules",
-    "./dist"
+    "./dist",
+    "./tests"
   ],
   "$schema": "./.vscode/tsconfig.schema.json"
 }
