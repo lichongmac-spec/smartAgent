@@ -5,13 +5,15 @@
  *
  * 覆盖：
  *   1. 分级日志（info / success / warn / error / debug）
- *   2. configureLogger / getLoggerConfig
- *   3. withSpinner（正常 / 异常 / CI 降级）
- *   4. createProgressBar（正常 / 边界 / fail）
- *   5. progressTick + clearProgressLine
+ *   2. configureLogger / getLoggerConfig（含 noColor 影响）
+ *   3. logger.timer / logJSON / logErrorJSON / writeError
+ *   4. debug 多类型输入（string / Error / object）
+ *   5. withSpinner（正常 / 异常 / CI 降级）
+ *   6. createProgressBar（正常 / 边界 / fail）
+ *   7. progressTick + clearProgressLine
  *
  * 未覆盖（需要 TTY 环境，手工测试）：
- *   - Select / MultiSelect / Confirm / Input
+ *   - Select / MultiSelect / Confirm / Input / Password
  *   - step / intro / outro
  */
 
@@ -112,7 +114,7 @@ async function main() {
         const cfg1 = getLoggerConfig();
         assert(cfg1.isCI === true, 'isCI 应为 true');
         assert(cfg1.verbose === true, 'verbose 应为 true');
-        assert(cfg1.noColor === false, 'noColor 不应被 CI 自动开启');
+        assert(cfg1.noColor === false, 'noColor=explicit false 不应被 CI 覆盖');
 
         configureLogger({ isCI: false, verbose: false, noColor: false });
         const cfg2 = getLoggerConfig();
@@ -120,13 +122,123 @@ async function main() {
     });
 
     // ============================================================
-    //  测试 3: logger.blank / write
+    //  测试 3: noColor 模式下的输出（不含颜色/emoji）
     // ============================================================
-    await runTest('logger.blank / write', () => {
-        // blank() 不应抛异常
-        const r1 = captureConsole(() => logger.blank());
-        assert(r1.stdout.length >= 0, 'blank 不应抛异常');
+    await runTest('noColor 模式输出（无 emoji 无颜色）', () => {
+        configureLogger({ verbose: true, isCI: false, noColor: true });
 
+        const r1 = captureConsole(() => logger.info('test'));
+        assert(!r1.stdout[0].includes('ℹ'), 'noColor 下 info 不应含 ℹ');
+        assert(r1.stdout[0].includes('test'), 'noColor 下 info 应保留消息文本');
+
+        const r2 = captureConsole(() => logger.success('ok'));
+        assert(!r2.stdout[0].includes('✅'), 'noColor 下 success 不应含 ✅');
+
+        const r3 = captureConsole(() => logger.error('fail'));
+        assert(!r3.stderr[0].includes('❌'), 'noColor 下 error 不应含 ❌');
+
+        const r4 = captureConsole(() => logger.debug('dbg'));
+        assert(!r4.stdout[0].includes('🔍'), 'noColor 下 debug 不应含 🔍');
+
+        configureLogger({ noColor: false });
+    });
+
+    // ============================================================
+    //  测试 4: debug 多类型输入
+    // ============================================================
+    await runTest('debug 支持 Error 和 object 类型', () => {
+        configureLogger({ verbose: true, isCI: false, noColor: false });
+
+        // Error 对象
+        const r1 = captureConsole(() =>
+            logger.debug(new Error('test error'))
+        );
+        assert(r1.stdout.some(s => s.includes('test error')), 'debug(Error) 应包含消息');
+        assert(r1.stdout.some(s => s.includes('Error: test error')), 'debug(Error) 应包含堆栈');
+
+        // 普通对象
+        const r2 = captureConsole(() =>
+            logger.debug({ key: 'val', num: 42 })
+        );
+        assert(r2.stdout.some(s => s.includes('"key"')), 'debug(object) 应输出 JSON 格式');
+        assert(r2.stdout.some(s => s.includes('42')), 'debug(object) 应包含数值');
+
+        // 空对象
+        const r3 = captureConsole(() => logger.debug({}));
+        assert(r3.stdout.length > 0, 'debug({}) 应输出');
+
+        configureLogger({ verbose: false });
+    });
+
+    // ============================================================
+    //  测试 5: logger.timer 性能计时器
+    // ============================================================
+    await runTest('logger.timer 性能计时器', () => {
+        // 颜色模式下：输出了含 ANSI 码的带色文本
+        configureLogger({ isCI: false, noColor: false });
+        const r = captureConsole(() => {
+            const timer = logger.timer('测试任务');
+            timer.end();
+        });
+        assert(r.stdout.some(s => s.includes('测试任务')), 'timer 输出应包含标签');
+
+        // 去 ANSI 码后应能匹配到秒数（如 0.00s）
+        const stripped = r.stdout.join('').replace(/\x1b\[[0-9;]*m/g, '');
+        assert(/[\d.]+s/.test(stripped), `timer 输出应包含秒数，实际: "${stripped}"`);
+
+        // noColor 模式：纯文本输出
+        configureLogger({ noColor: true });
+        const r2 = captureConsole(() => {
+            const timer = logger.timer('noColor task');
+            timer.end();
+        });
+        assert(r2.stdout.some(s => s.includes('⏱️ noColor task')), 'noColor 下 timer 仍应工作');
+        assert(/[\d.]+s/.test(r2.stdout.join('')), 'noColor 下秒数应可匹配');
+
+        configureLogger({ noColor: false });
+    });
+
+    // ============================================================
+    //  测试 6: logger.logJSON / logErrorJSON
+    // ============================================================
+    await runTest('结构化日志 logJSON / logErrorJSON', () => {
+        // logJSON → stdout
+        const r1 = captureConsole(() =>
+            logger.logJSON('task_complete', { duration: 123, count: 5 })
+        );
+        assert(r1.stdout.length === 1, 'logJSON 应输出恰好 1 行');
+        const parsed = JSON.parse(r1.stdout[0]);
+        assert(parsed.level === 'info', 'level 应为 info');
+        assert(parsed.event === 'task_complete', 'event 应为 task_complete');
+        assert(parsed.duration === 123, 'duration 应透传');
+        assert(parsed.count === 5, 'count 应透传');
+        assert(typeof parsed.timestamp === 'string', 'timestamp 存在');
+
+        // logErrorJSON → stderr
+        const r2 = captureConsole(() =>
+            logger.logErrorJSON('fetch_failed', new Error('timeout'), { url: '/api/data' })
+        );
+        assert(r2.stderr.length === 1, 'logErrorJSON 应输出到 stderr');
+        const parsed2 = JSON.parse(r2.stderr[0]);
+        assert(parsed2.level === 'error', 'level 应为 error');
+        assert(parsed2.event === 'fetch_failed', 'event 应为 fetch_failed');
+        assert(parsed2.error.message === 'timeout', 'error.message 正确');
+        assert(parsed2.error.name === 'Error', 'error.name 正确');
+        assert(parsed2.url === '/api/data', '额外 data 字段应透传');
+
+        // 无额外 data
+        const r3 = captureConsole(() =>
+            logger.logJSON('ping')
+        );
+        const parsed3 = JSON.parse(r3.stdout[0]);
+        assert(parsed3.event === 'ping', '无 data 时也能正常工作');
+    });
+
+    // ============================================================
+    //  测试 7: logger.write / writeError / blank
+    // ============================================================
+    await runTest('logger.write / writeError / blank', () => {
+        // write → stdout
         const origWrite = process.stdout.write;
         let captured = '';
         process.stdout.write = ((chunk: string | Uint8Array, ..._args: any[]) => {
@@ -137,10 +249,26 @@ async function main() {
         logger.write('hello');
         process.stdout.write = origWrite;
         assert(captured === 'hello', `write 应输出 'hello'，实际: '${captured}'`);
+
+        // writeError → stderr
+        const origErrWrite = process.stderr.write;
+        let capturedErr = '';
+        process.stderr.write = ((chunk: string | Uint8Array, ..._args: any[]) => {
+            capturedErr += typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk);
+            return true;
+        }) as typeof process.stderr.write;
+
+        logger.writeError('stderr out');
+        process.stderr.write = origErrWrite;
+        assert(capturedErr === 'stderr out', `writeError 应输出到 stderr`);
+
+        // blank 不抛异常
+        const r = captureConsole(() => logger.blank());
+        assert(Array.isArray(r.stdout), 'blank 不应抛异常');
     });
 
     // ============================================================
-    //  测试 4: withSpinner（正常流程）
+    //  测试 8: withSpinner（正常流程）
     // ============================================================
     await runTest('withSpinner 正常流程', async () => {
         configureLogger({ isCI: false, verbose: false, noColor: false });
@@ -157,7 +285,7 @@ async function main() {
     });
 
     // ============================================================
-    //  测试 5: withSpinner（异常传播）
+    //  测试 9: withSpinner（异常传播）
     // ============================================================
     await runTest('withSpinner 异常传播', async () => {
         configureLogger({ isCI: false, verbose: false, noColor: false });
@@ -175,24 +303,35 @@ async function main() {
     });
 
     // ============================================================
-    //  测试 6: withSpinner CI 降级
+    //  测试 10: withSpinner CI 降级
     // ============================================================
     await runTest('withSpinner CI 降级', async () => {
         configureLogger({ isCI: true, verbose: false, noColor: false });
 
         let called = false;
-        const result = await withSpinner('CI 任务', async () => {
+        let spinnerText = '';
+        const result = await withSpinner('CI 任务', async (spinner) => {
             called = true;
+            spinnerText = spinner.text;
+            spinner.text = '更新文案';
+            assert(spinner.text === '更新文案', 'mock spinner 应支持 text 读写');
             return 'ok';
         });
         assert(called, 'CI 模式下异步函数应被调用');
         assert(result === 'ok', 'CI 模式下应正确返回值');
+        assert(spinnerText === 'CI 任务', 'mock spinner 初始 text 应正确');
 
-        configureLogger({ isCI: false });
+        // noColor 模式也应走降级路径
+        configureLogger({ isCI: false, noColor: true });
+        let called2 = false;
+        await withSpinner('noColor 任务', async () => { called2 = true; });
+        assert(called2, 'noColor 模式也应正常执行');
+
+        configureLogger({ isCI: false, noColor: false });
     });
 
     // ============================================================
-    //  测试 7: createProgressBar 正常进度
+    //  测试 11: createProgressBar 正常进度
     // ============================================================
     await runTest('createProgressBar 正常进度', () => {
         const bar = createProgressBar(10, { label: '下载中', width: 20 });
@@ -203,7 +342,7 @@ async function main() {
     });
 
     // ============================================================
-    //  测试 8: createProgressBar 边界条件
+    //  测试 12: createProgressBar 边界条件
     // ============================================================
     await runTest('createProgressBar 边界条件', () => {
         // total=0 → 自动修正为 1
@@ -221,7 +360,7 @@ async function main() {
         bar3.update(-5);
         bar3.done();
 
-        // 自定义字符
+        // 自定义字符与 extra 模板
         const bar4 = createProgressBar(5, {
             label: '处理',
             filledChar: '#',
@@ -233,16 +372,23 @@ async function main() {
     });
 
     // ============================================================
-    //  测试 9: createProgressBar fail
+    //  测试 13: createProgressBar fail
     // ============================================================
     await runTest('createProgressBar fail', () => {
         const bar = createProgressBar(10);
         bar.update(5);
-        bar.fail('下载失败');
+
+        // fail 带消息
+        const r = captureConsole(() => bar.fail('下载失败'));
+        assert(r.stdout.some(s => s.includes('下载失败')), 'fail 应输出错误消息');
+
+        // fail 不带消息（仅换行）
+        const bar2 = createProgressBar(5);
+        bar2.fail();
     });
 
     // ============================================================
-    //  测试 10: progressTick + clearProgressLine
+    //  测试 14: progressTick + clearProgressLine
     // ============================================================
     await runTest('progressTick + clearProgressLine', () => {
         progressTick(0, 5, '扫描');
@@ -255,7 +401,7 @@ async function main() {
     });
 
     // ============================================================
-    //  测试 11: debug 自动读取 verbose
+    //  测试 15: debug 自动读取全局 verbose 配置
     // ============================================================
     await runTest('debug 自动读取全局 verbose 配置', () => {
         configureLogger({ verbose: false, isCI: false, noColor: false });

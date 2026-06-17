@@ -31,3 +31,5 @@ coverage/
 .agentrc
 .agentrc
 .vscode/tsconfig.schema.json
+
+.workbuddy/

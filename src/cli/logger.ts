@@ -7,6 +7,8 @@
  * 3. 进度条（单行刷新，CI 环境自动降级为纯文本）
  * 4. 交互式选择 / 确认 / 输入（基于 @clack/prompts）
  * 5. CI 环境检测 & NO_COLOR 适配（自动关闭 emoji 和颜色）
+ * 6. 性能计时器
+ * 7. 结构化日志输出（JSON 格式）
  *
  * 使用方式：
  *   import { logger, withSpinner, progressBar, Select, Confirm, Input } from './logger.js';
@@ -37,6 +39,39 @@ let _noColor = false;
 let _activeSpinner: Ora | null = null;
 
 // ============================================================
+//  颜色辅助函数（不污染 pc 对象）
+// ============================================================
+
+/**
+ * 根据 _noColor 状态决定是否应用颜色
+ * 用法：c('blue', 'Hello') 或 c.blue('Hello')
+ */
+function c<T extends keyof typeof pc>(
+    color: T,
+    text: string | number | null | undefined
+): string {
+    if (_noColor) return String(text ?? '');
+    const fn = pc[color] as (s: string) => string;
+    return fn(String(text ?? ''));
+}
+
+// 便捷颜色函数
+const color = {
+    dim: (s: string | number | null | undefined) => c('dim', s),
+    blue: (s: string | number | null | undefined) => c('blue', s),
+    green: (s: string | number | null | undefined) => c('green', s),
+    yellow: (s: string | number | null | undefined) => c('yellow', s),
+    red: (s: string | number | null | undefined) => c('red', s),
+    gray: (s: string | number | null | undefined) => c('gray', s),
+    cyan: (s: string | number | null | undefined) => c('cyan', s),
+    magenta: (s: string | number | null | undefined) => c('magenta', s),
+    bold: (s: string | number | null | undefined) => {
+        if (_noColor) return String(s ?? '');
+        return pc.bold(String(s ?? ''));
+    },
+};
+
+// ============================================================
 //  配置注入（由入口 index.ts 调用）
 // ============================================================
 
@@ -52,25 +87,8 @@ export interface LoggerConfig {
 export function configureLogger(cfg: LoggerConfig = {}): void {
     _isCI = cfg.isCI ?? false;
     _verbose = cfg.verbose ?? false;
+    // 自动检测 NO_COLOR 环境变量
     _noColor = cfg.noColor ?? (!!process.env.NO_COLOR || _isCI);
-
-    // 开启 noColor 时同步关闭 picocolors（picocolors 本身已支持 NO_COLOR，
-    // 但显式控制更可靠）
-    if (_noColor) {
-        const noop = (s: string | number | null | undefined) => String(s ?? '');
-        // picocolors 不支持直接索引赋值，用 any 桥接
-        /* eslint-disable @typescript-eslint/no-explicit-any */
-        (pc as any).dim = noop;
-        (pc as any).blue = noop;
-        (pc as any).green = noop;
-        (pc as any).yellow = noop;
-        (pc as any).red = noop;
-        (pc as any).gray = noop;
-        (pc as any).cyan = noop;
-        (pc as any).magenta = noop;
-        (pc as any).bold = noop;
-        /* eslint-enable @typescript-eslint/no-explicit-any */
-    }
 }
 
 /** 获取当前配置快照 */
@@ -90,33 +108,46 @@ function resolveVerbose(explicit?: boolean): boolean {
 export const logger = {
     /** 普通信息 */
     info(msg: string): void {
-        console.log(`${_noColor ? '' : pc.blue('ℹ') + ' '}${msg}`);
+        console.log(`${_noColor ? '' : 'ℹ '}${msg}`);
     },
 
     /** 成功 */
     success(msg: string): void {
-        console.log(`${_noColor ? '' : pc.green('✅') + ' '}${msg}`);
+        console.log(`${_noColor ? '' : '✅ '}${msg}`);
     },
 
     /** 警告 */
     warn(msg: string): void {
-        console.log(`${_noColor ? '' : pc.yellow('⚠') + ' '}${msg}`);
+        console.log(`${_noColor ? '' : '⚠️ '}${msg}`);
     },
 
     /** 错误 */
     error(msg: string): void {
-        console.error(`${_noColor ? '' : pc.red('❌') + ' '}${msg}`);
+        console.error(`${_noColor ? '' : '❌ '}${msg}`);
     },
 
     /**
      * 调试信息
-     * @param msg 消息内容
+     * @param msg 消息内容，支持字符串、Error、对象
      * @param verbose 是否要求 verbose 模式；省略时自动读取全局 verbose 配置
      */
-    debug(msg: string, verbose?: boolean): void {
-        if (resolveVerbose(verbose)) {
-            console.log(`${_noColor ? '' : pc.gray('🔍') + ' '}${msg}`);
+    debug(msg: string | Error | unknown, verbose?: boolean): void {
+        if (!resolveVerbose(verbose)) return;
+
+        let output: string;
+        if (msg instanceof Error) {
+            output = `${msg.message}\n${msg.stack || ''}`;
+        } else if (typeof msg === 'object' && msg !== null) {
+            try {
+                output = JSON.stringify(msg, null, 2);
+            } catch {
+                output = String(msg);
+            }
+        } else {
+            output = String(msg);
         }
+
+        console.log(`${_noColor ? '' : '🔍 '}${output}`);
     },
 
     /** 纯输出（无前缀，无换行），用于拼接 */
@@ -133,11 +164,148 @@ export const logger = {
     blank(): void {
         console.log();
     },
+
+    /**
+     * 性能计时器
+     * 用法：
+     *   const timer = logger.timer('API 调用');
+     *   await fetchData();
+     *   timer.end(); // 输出: ⏱️ API 调用: 1.23s
+     */
+    timer(label: string): { end: () => void } {
+        const start = Date.now();
+        const labelStr = label || '耗时';
+
+        return {
+            end: () => {
+                const elapsed = ((Date.now() - start) / 1000).toFixed(2);
+                if (_noColor) {
+                    console.log(`⏱️ ${labelStr}: ${elapsed}s`);
+                } else {
+                    console.log(`${pc.gray('⏱️')} ${pc.cyan(labelStr)}: ${pc.yellow(elapsed)}s`);
+                }
+            },
+        };
+    },
+
+    /**
+     * 结构化日志（JSON 格式），适合脚本解析
+     * 用法：
+     *   logger.logJSON('task_complete', { duration: 123, success: true })
+     *   // 输出: {"level":"info","event":"task_complete","duration":123,"success":true}
+     */
+    logJSON(event: string, data: Record<string, unknown> = {}): void {
+        const entry = {
+            level: 'info',
+            timestamp: new Date().toISOString(),
+            event,
+            ...data,
+        };
+        console.log(JSON.stringify(entry));
+    },
+
+    /**
+     * 结构化错误日志
+     */
+    logErrorJSON(event: string, error: Error, data: Record<string, unknown> = {}): void {
+        const entry = {
+            level: 'error',
+            timestamp: new Date().toISOString(),
+            event,
+            error: {
+                message: error.message,
+                stack: error.stack,
+                name: error.name,
+            },
+            ...data,
+        };
+        console.error(JSON.stringify(entry));
+    },
 };
 
 // ============================================================
 //  2. Spinner
 // ============================================================
+
+/** 创建完整的模拟 Ora 对象（用于 CI 降级） */
+function createMockSpinner(text: string): Ora {
+    let currentText = text;
+    let isSpinning = false;
+
+    const mock = {
+        _text: currentText,
+
+        get text(): string {
+            return this._text;
+        },
+        set text(value: string) {
+            this._text = value;
+        },
+
+        get isSpinning(): boolean {
+            return isSpinning;
+        },
+
+        prefixText: undefined as string | undefined,
+
+        start(): Ora {
+            isSpinning = true;
+            console.log(`⏳ ${this._text}`);
+            return this as unknown as Ora;
+        },
+        stop(): Ora {
+            isSpinning = false;
+            return this as unknown as Ora;
+        },
+        succeed(msg?: string): Ora {
+            isSpinning = false;
+            if (msg) console.log(`✅ ${msg}`);
+            else console.log(`✅ ${this._text}`);
+            return this as unknown as Ora;
+        },
+        fail(msg?: string): Ora {
+            isSpinning = false;
+            if (msg) console.error(`❌ ${msg}`);
+            else console.error(`❌ ${this._text}`);
+            return this as unknown as Ora;
+        },
+        warn(msg?: string): Ora {
+            isSpinning = false;
+            if (msg) console.log(`⚠️ ${msg}`);
+            else console.log(`⚠️ ${this._text}`);
+            return this as unknown as Ora;
+        },
+        info(msg?: string): Ora {
+            if (msg) console.log(`ℹ️ ${msg}`);
+            return this as unknown as Ora;
+        },
+        stopAndPersist(_options?: unknown): Ora {
+            isSpinning = false;
+            return this as unknown as Ora;
+        },
+        clear(): Ora {
+            return this as unknown as Ora;
+        },
+        render(): Ora {
+            return this as unknown as Ora;
+        },
+        frame(): string {
+            return '';
+        },
+
+        color: 'cyan' as const,
+        indent: 0,
+        interval: 100,
+        spinner: { interval: 100, frames: ['|'] },
+
+        get suffixText(): string {
+            return '';
+        },
+        set suffixText(_value: string) {},
+    };
+
+    return mock as unknown as Ora;
+}
 
 /**
  * 带 Spinner 的异步任务包装
@@ -159,8 +327,10 @@ export async function withSpinner<T>(
     // CI / noColor 环境：降级为纯文本进度
     if (_isCI || _noColor) {
         console.log(`⏳ ${text}`);
+        const mockSpinner = createMockSpinner(text);
+
         try {
-            const result = await fn({ text, start: () => {}, stop: () => {}, fail: () => {} } as Ora);
+            const result = await fn(mockSpinner);
             console.log(`✅ ${text}`);
             return result;
         } catch (error) {
@@ -264,7 +434,7 @@ export function createProgressBar(total: number, options: ProgressBarOptions = {
             process.stdout.cursorTo?.(0);
             process.stdout.clearLine?.(0);
             if (msg) {
-                console.log(`${_noColor ? '' : pc.red('❌')} ${msg}`);
+                console.log(`${_noColor ? '' : '❌ '}${msg}`);
             } else {
                 process.stdout.write('\n');
             }
@@ -319,10 +489,14 @@ export async function Select<T extends string>(
     message: string,
     options: { value: T; label: string; hint?: string }[],
 ): Promise<T> {
+    // @clack/prompts 运行时支持 hint 字段，但类型定义不包含
     const result: T | symbol = await clack.select({
         message,
-        // @clack/prompts Option<Value> 不含 hint，用 any 传递（运行时可用）
-        options: options.map(o => ({ value: o.value, label: o.label, hint: o.hint })) as any,
+        options: options.map(o => ({
+            value: o.value,
+            label: o.label,
+            hint: o.hint,
+        })) as any,
     });
 
     if (clack.isCancel(result)) {
@@ -345,7 +519,11 @@ export async function MultiSelect<T extends string>(
     const result: T[] | symbol = await clack.multiselect({
         message,
         required,
-        options: options.map(o => ({ value: o.value, label: o.label, hint: o.hint })) as any,
+        options: options.map(o => ({
+            value: o.value,
+            label: o.label,
+            hint: o.hint,
+        })) as any,
     });
 
     if (clack.isCancel(result)) {
@@ -397,14 +575,13 @@ export async function Input(
 }
 
 /**
- * 密码输入（回显为 * 或完全隐藏）
- * 注意：@clack/prompts 在 text() 中已对密码文件做了处理，
- * 此处直接复用 Input 但在 label 中标注
+ * 密码输入
+ * 复用 Input，语义化命名
  */
 export const Password = Input;
 
 /**
- * 步骤指示器：包装 @clack 的 spinner-like note 输出
+ * 步骤指示器
  */
 export function step(title: string, content?: string): void {
     clack.note(content ?? '', title);
@@ -414,11 +591,11 @@ export function step(title: string, content?: string): void {
  * intro / outro 用于包裹一组交互步骤
  */
 export function intro(title: string): void {
-    clack.intro(pc.bold(title));
+    clack.intro(title);
 }
 
 export function outro(message: string): void {
-    clack.outro(pc.green(message));
+    clack.outro(message);
 }
 
 // ============================================================
