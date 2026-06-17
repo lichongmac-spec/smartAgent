@@ -10,6 +10,8 @@
   "scripts": {
     "test:error": "tsx tests/error-handler.test.ts",
     "test:error:debug": "tsx --inspect-brk tests/error-handler.test.ts",
+    "test:env-check": "tsx tests/env-check.test.ts",
+    "test:env-check:debug": "tsx --inspect-brk tests/env-check.test.ts",
     "test:logger": "tsx tests/logger.test.ts",
     "test:logger:debug": "tsx --inspect-brk tests/logger.test.ts",
     "build": "tsc",
