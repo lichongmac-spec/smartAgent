@@ -26,3 +26,5 @@ CLI交互；
 ## 8. 交互式自动补全 (Autocomplete)
 
 ## 9. 进度条 (Progress Bar) - 多任务并行
+
+## 10. 操作操作重试 (Retry with Backoff)
