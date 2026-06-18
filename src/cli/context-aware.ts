@@ -320,9 +320,10 @@ export class ContextManager {
         if (keepFrom > 0) {
             const minKeep = Math.min(1, nonSystemMessages.length);
             const keepStart = Math.min(keepFrom, nonSystemMessages.length - minKeep);
+            const actualRemoved = nonSystemMessages.length - (nonSystemMessages.length - keepStart);
             this.messages = [...systemMessages, ...nonSystemMessages.slice(keepStart)];
             this._updatedAt = new Date();
-            return keepStart; // 返回实际删除数量（可能因 minKeep 调整而小于 keepFrom）
+            return actualRemoved;
         }
 
         return 0;
