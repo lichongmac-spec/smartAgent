@@ -33,6 +33,8 @@
     "test:profile:debug": "tsx --inspect-brk tests/profile.test.ts",
     "test:secrets": "tsx tests/secrets.test.ts",
     "test:secrets:debug": "tsx --inspect-brk tests/secrets.test.ts",
+    "test:debug": "tsx tests/debug.test.ts",
+    "test:debug:debug": "tsx --inspect-brk tests/debug.test.ts",
     "test:all": "tsx tests/run-all.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",

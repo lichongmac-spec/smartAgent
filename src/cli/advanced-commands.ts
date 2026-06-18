@@ -25,8 +25,9 @@ import { renderKVTable } from './utils/table.js';
 import { redactApiKey } from './utils/secrets.js';
 import { setupAutocomplete, chatCompleter } from './utils/autocomplete.js';
 import { withRetry, type RetryOptions } from './utils/retry.js';
-import { withTimeout, withTimeoutAndSignal, TimeoutError } from './utils/timeout.js';
+import { withTimeoutAndSignal, TimeoutError } from './utils/timeout.js';
 import { profile } from './utils/profile.js';
+import { setVerbose, debug } from './utils/debug.js';
 
 export function registerAdvancedCommands(program: Command): void {
     // ============================================================
@@ -148,15 +149,32 @@ export function registerAdvancedCommands(program: Command): void {
             profile?: boolean;
         }) => {
             try {
+                // ---- 0. 应用 verbose 模式 ----
+                if (options.verbose) {
+                    setVerbose(true);
+                }
+
                 const config = configManager.get();
                 const model = options.model || config.model;
                 const doProfile = options.profile ?? false;
+
+                debug('ask 命令启动', {
+                    model,
+                    verbose: options.verbose ?? false,
+                    stream: options.stream ?? true,
+                    retry: options.retry ?? 0,
+                    timeout: options.timeout,
+                    profile: doProfile,
+                });
 
                 // ---- 1. 构建系统提示词 ----
                 const systemPrompt = options.systemPrompt ?? undefined;
 
                 // ---- 2. 读取 stdin 管道 ----
                 const stdinContent = await profile('stdin-read', () => readFromStdin(), doProfile);
+                if (stdinContent) {
+                    debug('stdin 管道输入已读取', { length: stdinContent.length });
+                }
 
                 // ---- 3. 加载上下文文件 ----
                 let fileContent = '';
@@ -164,6 +182,8 @@ export function registerAdvancedCommands(program: Command): void {
                     const contextPaths = Array.isArray(options.context)
                         ? options.context
                         : [options.context];
+
+                    debug('加载上下文文件', { count: contextPaths.length, paths: contextPaths });
 
                     fileContent = await profile('file-load', async () => {
                         let content = '';
@@ -180,6 +200,8 @@ export function registerAdvancedCommands(program: Command): void {
                         }
                         return content;
                     }, doProfile);
+
+                    debug('上下文文件加载完成', { totalLength: fileContent.length });
                 }
 
                 // ---- 4. 组装完整 prompt ----
@@ -190,6 +212,8 @@ export function registerAdvancedCommands(program: Command): void {
                 if (stdinContent) {
                     finalPrompt = `${finalPrompt}\n\n---\n📥 管道输入:\n${stdinContent}`;
                 }
+
+                debug('最终 prompt 组装完成', { length: finalPrompt.length });
 
                 // ---- 5. 构建上下文 ----
                 const ctx = new ContextManager(systemPrompt);
@@ -265,6 +289,12 @@ export function registerAdvancedCommands(program: Command): void {
 
                 response = await profile('llm-call', doLLMCall, doProfile);
 
+                debug('LLM 调用完成', {
+                    responseLength: response.length,
+                    model,
+                    retryUsed: retryTimes > 0,
+                });
+
                 if (options.stream !== false) {
                     // 流式输出
                     await profile('stream-output', () =>
@@ -287,15 +317,29 @@ export function registerAdvancedCommands(program: Command): void {
         .command('chat')
         .description('进入交互式对话模式（Tab 补全，/exit 退出）')
         .option('-m, --model <model>', '指定模型')
+        .option('-v, --verbose', '显示详细信息')
         .option('-s, --system-prompt <text>', '自定义系统提示词')
         .option('--no-stream', '禁用流式输出')
         .option('--profile', '输出性能分析耗时信息')
-        .action(async (options: { model?: string; systemPrompt?: string; stream?: boolean; profile?: boolean }) => {
+        .action(async (options: { model?: string; verbose?: boolean; systemPrompt?: string; stream?: boolean; profile?: boolean }) => {
             const { handleError } = await import('./error-handler.js');
 
             try {
+                // ---- 应用 verbose 模式 ----
+                if (options.verbose) {
+                    setVerbose(true);
+                }
+
                 const config = configManager.get();
                 const model = options.model || config.model;
+
+                debug('chat 命令启动', {
+                    model,
+                    verbose: options.verbose ?? false,
+                    stream: options.stream ?? true,
+                    profile: options.profile ?? false,
+                    systemPrompt: options.systemPrompt ? `${options.systemPrompt.slice(0, 60)}...` : undefined,
+                });
 
                 // 非 TTY 环境：打印提示并退出（管道调用、CI 等）
                 if (!process.stdin.isTTY) {
@@ -394,6 +438,13 @@ export function registerAdvancedCommands(program: Command): void {
                     ctx.addUserMessage(line);
 
                     const doProfile = options.profile ?? false;
+
+                    debug('用户输入', {
+                        message: line.length > 80 ? line.slice(0, 80) + '…' : line,
+                        ctxMessages: ctx.length,
+                        ctxTokens: ctx.totalTokens,
+                    });
+
                     const generateResponse = async (): Promise<string> => {
                         // TODO: 替换为真实 API 调用 + SSE 流式解析
                         return `收到: "${line.length > 60 ? line.slice(0, 60) + '…' : line}"\n` +
@@ -401,6 +452,11 @@ export function registerAdvancedCommands(program: Command): void {
                     };
 
                     const mockResponse = await profile('llm-call', generateResponse, doProfile);
+
+                    debug('LLM 响应', {
+                        responseLength: mockResponse.length,
+                        ctxMessages: ctx.length + 1, // +1 for assistant message
+                    });
 
                     if (options.stream !== false) {
                         console.log('');

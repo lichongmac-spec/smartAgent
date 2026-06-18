@@ -15,15 +15,18 @@ import { configManager } from './config-manager.js';
 import { checkNodeVersion, isCI } from './env-check.js';
 import { setupGracefulShutdown } from './error-handler.js';
 import { configureLogger } from './logger.js';
+import { setVerbose } from './utils/debug.js';
 
 // ============ 1. 环境检查 ============
 checkNodeVersion();          // 确保 Node.js >= 18
 
 // ============ 1.5 日志初始化 ============
+// 注入 CI 检测结果
 configureLogger({
     isCI: isCI(),
-    verbose: configManager.get().verbose ?? false,
 });
+// 应用配置文件 / 环境变量中的 verbose 设置
+setVerbose(configManager.get().verbose ?? false);
 
 // ============ 2. 优雅退出 ============
 setupGracefulShutdown({
