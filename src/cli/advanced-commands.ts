@@ -23,11 +23,15 @@ import {
 import { logger } from './logger.js';
 import { renderKVTable } from './utils/table.js';
 import { redactApiKey } from './utils/secrets.js';
-import { setupAutocomplete, chatCompleter } from './utils/autocomplete.js';
+import { setupAutocomplete, enhancedChatCompleter, modelCompleter } from './utils/autocomplete.js';
 import { withRetry, type RetryOptions } from './utils/retry.js';
 import { withTimeoutAndSignal, TimeoutError } from './utils/timeout.js';
 import { profile } from './utils/profile.js';
 import { setVerbose, debug } from './utils/debug.js';
+import { sessionManager } from './utils/session.js';
+import { StreamHandler, createMockSSEStream } from './utils/stream-handler.js';
+import { dumpContext } from './utils/debug-mode.js';
+import pc from 'picocolors';
 
 export function registerAdvancedCommands(program: Command): void {
     // ============================================================
@@ -122,8 +126,81 @@ export function registerAdvancedCommands(program: Command): void {
         });
 
     // ============================================================
+    //  session 命令组 - 会话管理
+    //  子命令: list, create, delete, switch, show
+    // ============================================================
+    const sessionCmd = program.command('session').description('会话管理（多对话切换）');
+
+    sessionCmd
+        .command('list')
+        .description('列出所有会话')
+        .option('--json', '以 JSON 格式输出')
+        .action((options) => {
+            const sessions = sessionManager.list();
+            if (options.json) {
+                console.log(JSON.stringify(sessions, null, 2));
+                return;
+            }
+            if (sessions.length === 0) {
+                console.log('📭 暂无会话，使用 agent chat --session <name> 创建');
+                return;
+            }
+            console.log('');
+            console.log('📋 会话列表:');
+            for (const s of sessions) {
+                const marker = s.id === sessionManager.currentId ? '→' : ' ';
+                const preview = s.preview ? ` — ${s.preview}` : '';
+                console.log(`  ${marker} ${pc.bold(s.name)} (${s.messageCount} 条, ${s.updatedAt.slice(0, 10)})${preview}`);
+            }
+            console.log('');
+        });
+
+    sessionCmd
+        .command('create <name>')
+        .description('创建新会话')
+        .option('-m, --model <model>', '指定模型')
+        .action((name: string, opts) => {
+            sessionManager.create(name, opts.model);
+        });
+
+    sessionCmd
+        .command('delete <name>')
+        .description('删除会话')
+        .action((name: string) => {
+            const sessions = sessionManager.list();
+            const found = sessions.find(
+                (s: any) => s.name === name || s.id.startsWith(name),
+            );
+            if (!found) {
+                console.log(`❌ 会话 "${name}" 不存在`);
+                return;
+            }
+            sessionManager.delete(found.id);
+        });
+
+    sessionCmd
+        .command('show <name>')
+        .description('查看会话内容')
+        .option('--format <fmt>', '输出格式: text/json', 'text')
+        .action((name: string, opts) => {
+            const sessions = sessionManager.list();
+            const found = sessions.find(
+                (s: any) => s.name === name || s.id.startsWith(name),
+            );
+            if (!found) {
+                console.log(`❌ 会话 "${name}" 不存在`);
+                return;
+            }
+            if (opts.format === 'json') {
+                console.log(sessionManager.exportAsJSON(found.id));
+            } else {
+                console.log(sessionManager.exportAsText(found.id));
+            }
+        });
+
+    // ============================================================
     //  ask 命令 - 向 Agent 提问（核心命令）
-    //  支持：stdin 管道、上下文文件、流式/非流式输出、系统提示词
+    //  支持：stdin 管道、上下文文件、流式/非流式输出、系统提示词、会话、调试
     // ============================================================
     program
         .command('ask <prompt>')
@@ -137,6 +214,8 @@ export function registerAdvancedCommands(program: Command): void {
         .option('--retry <times>', '失败后自动重试次数（默认 0）', parseInt)
         .option('--timeout <ms>', '操作超时时间（毫秒，默认无限制）', parseInt)
         .option('--profile', '输出性能分析耗时信息')
+        .option('--session <name>', '使用指定会话（按名称或 ID 匹配）')
+        .option('--debug', '显示调试信息（上下文摘要）')
         .action(async (prompt: string, options: {
             model?: string;
             verbose?: boolean;
@@ -147,6 +226,8 @@ export function registerAdvancedCommands(program: Command): void {
             retry?: number;
             timeout?: number;
             profile?: boolean;
+            session?: string;
+            debug?: boolean;
         }) => {
             try {
                 // ---- 0. 应用 verbose 模式 ----
@@ -157,6 +238,35 @@ export function registerAdvancedCommands(program: Command): void {
                 const config = configManager.get();
                 const model = options.model || config.model;
                 const doProfile = options.profile ?? false;
+
+                // ---- 0.5 会话加载 ----
+                let ctx: ContextManager | null = null;
+                if (options.session) {
+                    // 按名称或 ID 查找会话
+                    const sessions = sessionManager.list();
+                    const found = sessions.find(
+                        (s: any) => s.name === options.session || s.id.startsWith(options.session),
+                    );
+                    if (found) {
+                        const loaded = sessionManager.load(found.id);
+                        if (loaded) {
+                            ctx = loaded;
+                            logger.success(`已加载会话: ${found.name}`);
+                        } else {
+                            logger.warn(`会话加载失败，创建新会话`);
+                            ctx = new ContextManager(options.systemPrompt);
+                        }
+                    } else {
+                        // 创建新会话
+                        const newId = sessionManager.create(options.session, model);
+                        ctx = new ContextManager(options.systemPrompt);
+                        sessionManager.saveContext(newId, ctx);
+                    }
+                }
+
+                if (!ctx) {
+                    ctx = new ContextManager(options.systemPrompt);
+                }
 
                 debug('ask 命令启动', {
                     model,
@@ -215,8 +325,10 @@ export function registerAdvancedCommands(program: Command): void {
 
                 debug('最终 prompt 组装完成', { length: finalPrompt.length });
 
-                // ---- 5. 构建上下文 ----
-                const ctx = new ContextManager(systemPrompt);
+                // ---- 5. 构建上下文（如果未从会话加载） ----
+                if (!ctx) {
+                    ctx = new ContextManager(systemPrompt);
+                }
                 ctx.addUserMessage(finalPrompt);
 
                 if (doProfile) {
@@ -239,22 +351,47 @@ export function registerAdvancedCommands(program: Command): void {
                     logger.blank();
                 }
 
-                // ---- 6. 调用 LLM（支持重试 + 超时 + 取消） ----
-                // TODO: 替换为真实 API 调用 + SSE 流式解析
+                // ---- 6. 调用 LLM（支持重试 + 超时 + 取消 + 流式输出） ----
+                // TODO: 替换为真实 API 调用
+                // 当前使用 Mock SSE 流演示流式输出能力
                 const retryTimes = options.retry ?? 0;
                 const timeoutMs = options.timeout;
+                const doStream = options.stream !== false;
+
+                // Mock: 生成回复文本
                 const mockResponse =
                     `收到问题: "${prompt}"\n\n` +
                     `当前上下文包含 ${ctx.length} 条消息，` +
                     `估算 ${ctx.totalTokens} tokens。\n\n` +
                     `这是模拟回复 —— 接入真实 LLM API 后将返回实际内容。`;
 
-                // 基础 LLM 调用（接受 AbortSignal 以支持真正取消）
+                // 使用 StreamHandler 处理流式输出
                 const callLLM = async (signal?: AbortSignal): Promise<string> => {
-                    // TODO: 接入真实 LLM API 时传递 signal 给 fetch：
-                    //   const res = await fetch(apiUrl, { signal, ... });
                     signal?.throwIfAborted();
-                    return mockResponse;
+
+                    if (doStream) {
+                        // 流式输出：通过 Mock SSE 流演示
+                        const mockResponseObj = createMockSSEStream(mockResponse, 10);
+                        const handler = new StreamHandler();
+
+                        console.log(''); // 空行分隔
+                        const fullText = await handler.processSSE(mockResponseObj, {
+                            onToken: (token) => {
+                                // token 已实时输出到 stdout
+                            },
+                            onComplete: () => {
+                                console.log(''); // 输出完成，换行
+                            },
+                            onInterrupt: () => {
+                                logger.warn('流式输出已中断');
+                            },
+                        });
+
+                        return fullText;
+                    } else {
+                        // 非流式：直接返回
+                        return mockResponse;
+                    }
                 };
 
                 /**
@@ -295,13 +432,25 @@ export function registerAdvancedCommands(program: Command): void {
                     retryUsed: retryTimes > 0,
                 });
 
-                if (options.stream !== false) {
-                    // 流式输出
-                    await profile('stream-output', () =>
-                        printStream(streamResponse(response, 15)),
-                    doProfile);
-                } else {
-                    // 非流式输出
+                // ---- 6.5 调试模式：打印上下文摘要 ----
+                if (options.debug) {
+                    dumpContext(ctx);
+                }
+
+                // ---- 7. 保存到会话 ----
+                if (options.session) {
+                    const sessions = sessionManager.list();
+                    const found = sessions.find(
+                        (s: any) => s.name === options.session || s.id.startsWith(options.session),
+                    );
+                    if (found) {
+                        ctx.addAssistantMessage(response);
+                        sessionManager.saveContext(found.id, ctx);
+                    }
+                }
+
+                // 非流式且未通过 StreamHandler 输出的，这里输出
+                if (!doStream) {
                     console.log(response);
                 }
             } catch (error) {
@@ -321,7 +470,12 @@ export function registerAdvancedCommands(program: Command): void {
         .option('-s, --system-prompt <text>', '自定义系统提示词')
         .option('--no-stream', '禁用流式输出')
         .option('--profile', '输出性能分析耗时信息')
-        .action(async (options: { model?: string; verbose?: boolean; systemPrompt?: string; stream?: boolean; profile?: boolean }) => {
+        .option('--session <name>', '使用或创建指定会话')
+        .option('--debug', '显示调试信息')
+        .action(async (options: {
+            model?: string; verbose?: boolean; systemPrompt?: string;
+            stream?: boolean; profile?: boolean; session?: string; debug?: boolean;
+        }) => {
             const { handleError } = await import('./error-handler.js');
 
             try {
@@ -348,8 +502,30 @@ export function registerAdvancedCommands(program: Command): void {
                     return;
                 }
 
-                // 创建对话上下文（支持系统提示词）
-                const ctx = new ContextManager(options.systemPrompt);
+                // 创建对话上下文（支持会话恢复）
+                let ctx: ContextManager;
+                if (options.session) {
+                    const sessions = sessionManager.list();
+                    const found = sessions.find(
+                        (s: any) => s.name === options.session || s.id.startsWith(options.session),
+                    );
+                    if (found) {
+                        const loaded = sessionManager.load(found.id);
+                        if (loaded) {
+                            ctx = loaded;
+                            logger.success(`已恢复会话: ${found.name}`);
+                        } else {
+                            ctx = new ContextManager(options.systemPrompt);
+                        }
+                    } else {
+                        const newId = sessionManager.create(options.session, model);
+                        ctx = new ContextManager(options.systemPrompt);
+                        sessionManager.saveContext(newId, ctx);
+                        logger.success(`已创建新会话: ${options.session}`);
+                    }
+                } else {
+                    ctx = new ContextManager(options.systemPrompt);
+                }
 
                 console.log(`💬 进入 Chat 模式 (模型: ${model})`);
                 console.log(`   会话 ID: ${ctx.sessionId}`);
@@ -357,9 +533,12 @@ export function registerAdvancedCommands(program: Command): void {
                 if (options.systemPrompt) {
                     console.log(`   系统提示: ${options.systemPrompt.slice(0, 60)}...`);
                 }
+                if (options.session) {
+                    console.log(`   会话名称: ${options.session}`);
+                }
                 console.log('');
 
-                // 创建 readline 实例 + 安装补全
+                // 创建 readline 实例 + 安装增强补全
                 const rl = readline.createInterface({
                     input: process.stdin,
                     output: process.stdout,
@@ -367,8 +546,8 @@ export function registerAdvancedCommands(program: Command): void {
                     terminal: true,
                 });
 
-                // 安装 Tab 自动补全
-                setupAutocomplete(rl, chatCompleter);
+                // 安装 Tab 自动补全（增强版）
+                setupAutocomplete(rl, enhancedChatCompleter);
 
                 // 交互循环
                 for await (const rawLine of rl) {
@@ -434,10 +613,34 @@ export function registerAdvancedCommands(program: Command): void {
                         continue;
                     }
 
+                    if (line === '/debug') {
+                        dumpContext(ctx);
+                        rl.prompt();
+                        continue;
+                    }
+
+                    if (line.startsWith('/session')) {
+                        const sessions = sessionManager.list();
+                        if (sessions.length === 0) {
+                            console.log('📭 暂无保存的会话');
+                        } else {
+                            console.log('');
+                            console.log('  📋 会话列表:');
+                            for (const s of sessions) {
+                                const marker = s.id === sessionManager.currentId ? pc.cyan('→') : ' ';
+                                console.log(`  ${marker} ${s.name} (${s.messageCount} 条消息, ${s.updatedAt.slice(0, 10)})`);
+                            }
+                            console.log('');
+                        }
+                        rl.prompt();
+                        continue;
+                    }
+
                     // ---- 正常对话 ----
                     ctx.addUserMessage(line);
 
                     const doProfile = options.profile ?? false;
+                    const doStream = options.stream !== false;
 
                     debug('用户输入', {
                         message: line.length > 80 ? line.slice(0, 80) + '…' : line,
@@ -445,25 +648,20 @@ export function registerAdvancedCommands(program: Command): void {
                         ctxTokens: ctx.totalTokens,
                     });
 
-                    const generateResponse = async (): Promise<string> => {
-                        // TODO: 替换为真实 API 调用 + SSE 流式解析
-                        return `收到: "${line.length > 60 ? line.slice(0, 60) + '…' : line}"\n` +
-                            `当前上下文 ${ctx.length} 条消息，估算 ${ctx.totalTokens} tokens。`;
-                    };
+                    // Mock 回复
+                    const mockResponse =
+                        `收到: "${line.length > 60 ? line.slice(0, 60) + '…' : line}"\n` +
+                        `当前上下文 ${ctx.length} 条消息，估算 ${ctx.totalTokens} tokens。`;
 
-                    const mockResponse = await profile('llm-call', generateResponse, doProfile);
+                    // 流式输出
+                    if (doStream) {
+                        const mockResponseObj = createMockSSEStream(mockResponse, 15);
+                        const handler = new StreamHandler();
 
-                    debug('LLM 响应', {
-                        responseLength: mockResponse.length,
-                        ctxMessages: ctx.length + 1, // +1 for assistant message
-                    });
-
-                    if (options.stream !== false) {
-                        console.log('');
-                        await profile('stream-output', () =>
-                            printStream(streamResponse(mockResponse, 15)),
-                        doProfile);
-                        console.log('');
+                        console.log(''); // 空行
+                        await handler.processSSE(mockResponseObj, {
+                            onComplete: () => { console.log(''); },
+                        });
                     } else {
                         console.log('');
                         console.log(mockResponse);
@@ -471,6 +669,23 @@ export function registerAdvancedCommands(program: Command): void {
                     }
 
                     ctx.addAssistantMessage(mockResponse);
+
+                    // 保存到会话
+                    if (options.session) {
+                        const sessions = sessionManager.list();
+                        const found = sessions.find(
+                            (s: any) => s.name === options.session || s.id.startsWith(options.session),
+                        );
+                        if (found) {
+                            sessionManager.saveContext(found.id, ctx);
+                        }
+                    }
+
+                    debug('LLM 响应', {
+                        responseLength: mockResponse.length,
+                        ctxMessages: ctx.length + 1,
+                    });
+
                     rl.prompt();
                 }
 

@@ -213,6 +213,106 @@ export function configKeyCompleter(keys: string[]): Completer {
 }
 
 // ============================================================
+//  Agent 专用补全器
+// ============================================================
+
+/**
+ * 模型名称补全器
+ *
+ * 补全已知的 LLM 模型名称。
+ *
+ * @example
+ *   setupAutocomplete(rl, modelCompleter);
+ */
+export const modelCompleter: Completer = (line: string): CompletionItem[] => {
+    const models: CompletionItem[] = [
+        { value: 'deepseek-chat', description: 'DeepSeek V3' },
+        { value: 'deepseek-reasoner', description: 'DeepSeek R1' },
+        { value: 'gpt-4o', description: 'OpenAI GPT-4o' },
+        { value: 'gpt-4o-mini', description: 'OpenAI GPT-4o Mini' },
+        { value: 'gpt-3.5-turbo', description: 'OpenAI GPT-3.5' },
+        { value: 'claude-3-opus-latest', description: 'Claude 3 Opus' },
+        { value: 'claude-3-sonnet-latest', description: 'Claude 3 Sonnet' },
+        { value: 'claude-3-haiku-latest', description: 'Claude 3 Haiku' },
+    ];
+
+    const trimmed = line.trimStart();
+    if (!trimmed) return [];
+
+    return models.filter((m) => m.value.startsWith(trimmed));
+};
+
+/**
+ * 工具名称补全器
+ *
+ * 补全 Agent 可用的工具名称。
+ *
+ * @param tools - 可用工具名称列表
+ *
+ * @example
+ *   const tools = ['readFile', 'writeFile', 'searchWeb'];
+ *   setupAutocomplete(rl, toolNameCompleter(tools));
+ */
+export function toolNameCompleter(tools: string[]): Completer {
+    const items: CompletionItem[] = tools.map((t) => ({ value: t, description: `工具: ${t}` }));
+
+    return (line: string): CompletionItem[] => {
+        const trimmed = line.trimStart();
+        if (!trimmed) return [];
+
+        return items.filter((item) => item.value.startsWith(trimmed));
+    };
+}
+
+/**
+ * 会话名称补全器
+ *
+ * 补全已有的会话名称。
+ *
+ * @example
+ *   setupAutocomplete(rl, sessionNameCompleter);
+ */
+export const sessionNameCompleter: Completer = (_line: string): CompletionItem[] => {
+    // 动态读取会话列表
+    try {
+        const { sessionManager } = require('../utils/session.js');
+        const sessions = sessionManager.list();
+        return sessions.map((s: any) => ({
+            value: s.name,
+            description: `${s.id.slice(0, 8)}... | ${s.preview || ''}`,
+        }));
+    } catch {
+        return [];
+    }
+};
+
+/**
+ * 增强版 Chat 补全器（包含更多命令）
+ */
+export function enhancedChatCompleter(line: string): CompletionItem[] {
+    const COMMANDS: CompletionItem[] = [
+        { value: '/exit', description: '退出对话' },
+        { value: '/quit', description: '退出对话' },
+        { value: '/clear', description: '清空上下文' },
+        { value: '/help', description: '显示帮助' },
+        { value: '/save', description: '保存会话到文件' },
+        { value: '/load', description: '从文件恢复会话' },
+        { value: '/stats', description: '显示上下文统计' },
+        { value: '/debug', description: '显示调试信息' },
+        { value: '/session', description: '会话管理' },
+        { value: '/model', description: '切换模型' },
+    ];
+
+    const trimmed = line.trimStart();
+
+    if (trimmed.startsWith('/')) {
+        return COMMANDS.filter((cmd) => cmd.value.startsWith(trimmed));
+    }
+
+    return [];
+}
+
+// ============================================================
 //  工具函数
 // ============================================================
 
