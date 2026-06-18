@@ -1,5 +1,5 @@
 /**
- * 交互式调试模式模块
+ * 交互式调试器模块
  *
  * 职责：
  * 1. 显示 Agent 内部状态
@@ -8,7 +8,7 @@
  * 4. 设置断点（未来）
  *
  * 使用方式：
- *   import { InteractiveDebugger } from './utils/debug-mode.js';
+ *   import { InteractiveDebugger } from './utils/interactive-debugger.js';
  *   const dbg = new InteractiveDebugger(ctx);
  *   await dbg.start();
  */

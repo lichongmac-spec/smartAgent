@@ -70,15 +70,18 @@ export function searchHistory(session: string, query: string): string[] {
  * - 重复注册导致内存泄漏
  * - 影响其他监听器的正常注册
  *
+ * 返回清理函数，调用后移除 line 监听器并保存当前历史。
+ *
  * @param rl - readline 实例
  * @param session - 会话名称（用于区分不同场景，如 'agent-chat'）
  * @param maxSize - 最大内存历史条数，默认 100
+ * @returns 清理函数
  */
 export function setupHistory(
     rl: Interface,
     session: string,
     maxSize: number = 100,
-): void {
+): () => void {
     const persisted = loadHistory(session);
 
     // 注入 readline 内部历史
@@ -88,7 +91,7 @@ export function setupHistory(
     rlAny.historyIndex = rlAny.history.length;
 
     // 直接添加 line 监听器记录历史（不覆盖 rl.on）
-    rl.on('line', (line: string) => {
+    const listener = (line: string) => {
         if (line.trim() && !line.startsWith('/')) {
             const h: string[] = rlAny.history || [];
             // 去重：连续相同行只保留一条
@@ -102,5 +105,14 @@ export function setupHistory(
                 saveHistory(session, h);
             }
         }
-    });
+    };
+
+    rl.on('line', listener);
+
+    // 返回清理函数
+    return () => {
+        rl.off('line', listener);
+        // 最后保存一次
+        saveHistory(session, rlAny.history || []);
+    };
 }

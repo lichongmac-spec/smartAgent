@@ -37,6 +37,7 @@
     "test:debug:debug": "tsx --inspect-brk tests/debug.test.ts",
     "test:encrypt": "tsx tests/encrypt.test.ts",
     "test:encrypt:debug": "tsx --inspect-brk tests/encrypt.test.ts",
+    "test": "tsx tests/test.ts",
     "test:all": "tsx tests/run-all.ts",
     "cli:test": "tsx tests/cli-test.ts",
     "test:session": "tsx tests/integration/session.test.ts",

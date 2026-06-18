@@ -30,7 +30,7 @@ import { profile } from './utils/profile.js';
 import { setVerbose, debug } from './utils/debug.js';
 import { sessionManager } from './utils/session.js';
 import { StreamHandler, createMockSSEStream } from './utils/stream-handler.js';
-import { dumpContext } from './utils/debug-mode.js';
+import { dumpContext } from './utils/interactive-debugger.js';
 import pc from 'picocolors';
 
 export function registerAdvancedCommands(program: Command): void {

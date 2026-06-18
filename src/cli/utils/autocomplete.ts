@@ -14,6 +14,7 @@
 import * as readline from 'readline';
 import { readdirSync, statSync } from 'fs';
 import { join, dirname, resolve } from 'path';
+import { sessionManager } from './session.js';
 
 // ============================================================
 //  类型定义
@@ -272,15 +273,16 @@ export function toolNameCompleter(tools: string[]): Completer {
  * @example
  *   setupAutocomplete(rl, sessionNameCompleter);
  */
-export const sessionNameCompleter: Completer = (_line: string): CompletionItem[] => {
-    // 动态读取会话列表
+export const sessionNameCompleter: Completer = (line: string): CompletionItem[] => {
+    // 使用顶层导入的 sessionManager 单例
     try {
-        const { sessionManager } = require('../utils/session.js');
         const sessions = sessionManager.list();
-        return sessions.map((s: any) => ({
-            value: s.name,
-            description: `${s.id.slice(0, 8)}... | ${s.preview || ''}`,
-        }));
+        return sessions
+            .filter((s) => line ? s.name.startsWith(line) : true)
+            .map((s) => ({
+                value: s.name,
+                description: `${s.id.slice(0, 8)}... | ${s.preview || ''}`,
+            }));
     } catch {
         return [];
     }

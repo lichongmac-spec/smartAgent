@@ -35,7 +35,23 @@ export interface SessionSummary extends SessionMeta {
     preview: string; // 最后一条消息预览
 }
 
-const SESSIONS_DIR = join(homedir(), '.smartagent', 'sessions');
+/**
+ * 获取会话存储根目录
+ *
+ * 优先级：
+ * 1. SMARTAGENT_SESSIONS_DIR 环境变量（便于测试隔离）
+ * 2. XDG_DATA_HOME 规范目录
+ * 3. ~/.smartagent/sessions（兜底）
+ */
+function getSessionsDir(): string {
+    if (process.env.SMARTAGENT_SESSIONS_DIR) {
+        return process.env.SMARTAGENT_SESSIONS_DIR;
+    }
+    const xdgDataHome = process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share');
+    return join(xdgDataHome, 'smartagent', 'sessions');
+}
+
+const SESSIONS_DIR = getSessionsDir();
 const INDEX_FILE = join(SESSIONS_DIR, 'index.json');
 
 /**

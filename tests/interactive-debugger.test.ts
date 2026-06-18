@@ -1,8 +1,8 @@
 /**
- * debug-mode.test.ts - 基础测试
+ * interactive-debugger.test.ts - 基础测试
  */
 
-import { InteractiveDebugger, dumpContext, dumpToolCalls } from '../src/cli/utils/debug-mode.js';
+import { InteractiveDebugger, dumpContext, dumpToolCalls } from '../src/cli/utils/interactive-debugger.js';
 import { ContextManager } from '../src/cli/context-aware.js';
 
 let passCount = 0;
@@ -50,7 +50,7 @@ async function main() {
         console.log('  ✅ InteractiveDebugger 实例化');
     } catch (e) { failCount++; console.log(`  ❌ ${e}`); }
 
-    console.log(`\n=== debug-mode: ${passCount}/${testCount} 通过, ${failCount} 失败 ===\n`);
+    console.log(`\n=== interactive-debugger: ${passCount}/${testCount} 通过, ${failCount} 失败 ===\n`);
     process.exit(failCount > 0 ? 1 : 0);
 }
 

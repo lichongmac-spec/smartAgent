@@ -8,20 +8,26 @@
  *   - ContextManager 序列化/反序列化
  *   - 会话导出
  *
- * 注意：SessionManager 使用 OS 级别的 homedir()，无法通过环境变量重定向。
- * 测试前会清理现有会话，测试后恢复。
+ * 注意：使用 SMARTAGENT_SESSIONS_DIR 环境变量隔离测试目录。
+ * 必须用动态 import 确保环境变量在模块初始化前生效（ESM 静态导入会被提升）。
  */
 
-import { readdirSync, rmSync, existsSync } from 'fs';
-import { homedir } from 'os';
+import { mkdtempSync, rmSync, readdirSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
-import { SessionManager } from '../../src/cli/utils/session.js';
-import { ContextManager } from '../../src/cli/context-aware.js';
+
+// 使用临时目录隔离测试
+const TEST_DIR = mkdtempSync(join(tmpdir(), 'session-integration-'));
+const SESSIONS_DIR = join(TEST_DIR, 'sessions');
+process.env.SMARTAGENT_SESSIONS_DIR = SESSIONS_DIR;
+
+// 动态导入（确保 env var 已设置后再初始化 session 模块）
+const { SessionManager } = await import('../../src/cli/utils/session.js');
+const { ContextManager } = await import('../../src/cli/context-aware.js');
 
 // ============================================================
 //  测试工具
 // ============================================================
-const SESSIONS_DIR = join(homedir(), '.smartagent', 'sessions');
 
 let testCount = 0;
 let passCount = 0;
@@ -63,7 +69,7 @@ function test(name: string, fn: () => void | Promise<void>): void {
 }
 
 /**
- * 清理 sessions 目录中所有文件，保留目录本身
+ * 清理测试 sessions 目录中所有文件
  */
 function cleanSessions(): void {
     if (!existsSync(SESSIONS_DIR)) return;
@@ -127,7 +133,7 @@ test('删除会话 — delete() 移除会话并更新 currentId', () => {
     assert(mgr.list().length === 0, `删除后应为 0 个会话，实际 ${mgr.list().length}`);
 });
 
-test('重命名会话 — rename() 更新名称', async () => {
+test('重命名会话 — rename() 更新名称', () => {
     cleanSessions();
     const mgr = new SessionManager();
     const id = mgr.create('原名');
@@ -215,7 +221,7 @@ await Promise.all(pendingAsync);
 // ============================================================
 //  清理
 // ============================================================
-cleanSessions();
+try { rmSync(TEST_DIR, { recursive: true, force: true }); } catch { /* */ }
 
 console.log(`\n=== session-integration: ${passCount}/${testCount} 通过, ${failCount} 失败 ===\n`);
 process.exit(failCount > 0 ? 1 : 0);

@@ -151,22 +151,25 @@ export function redactConfig<T extends Record<string, unknown>>(
  * 敏感信息匹配模式
  *
  * 覆盖常见密钥/令牌格式：
- * - OpenAI / DeepSeek 风格 API Key（sk- / dp- 前缀）
+ * - OpenAI / DeepSeek 风格 API Key（sk- / dp- 前缀，含至少一个数字）
  * - Bearer Token（HTTP Authorization 头）
  * - 通用 API Key / Secret（常见环境变量中的 key=value 形式）
  * - JWT Token（三段式 base64 编码）
- * - AWS 风格 Access Key（AKID 前缀）
+ *
+ * ⚠️ 为减少误匹配，模式均有最小长度和字符多样性要求。
  */
 const SENSITIVE_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
     {
         // OpenAI / DeepSeek / Anthropic 风格 API Key
         // 匹配: sk-xxx, sk-ant-xxx, dp-xxx, ak-xxx 等
-        pattern: /\b(?:sk|dp|ak|pk)-(?:ant-)?[A-Za-z0-9]{20,}\b/g,
+        // 要求：key body 至少 18 字符（真实 key 通常 48-64 字符）
+        pattern: /\b(?:sk|dp|ak|pk)-(?:ant-)?[A-Za-z0-9]{18,}\b/g,
         label: 'API Key',
     },
     {
         // Bearer Token（HTTP Authorization）
         // 匹配: Bearer eyJhbGci..., Bearer sk-xxx, 等
+        // 要求：token 部分至少 20 字符，避免匹配短占位符
         pattern: /Bearer\s+[A-Za-z0-9._\-+/=]{20,}/gi,
         label: 'Bearer Token',
     },
@@ -179,7 +182,8 @@ const SENSITIVE_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
     {
         // 常见 API Key 环境变量形式
         // 匹配: API_KEY=sk-xxx, token=abc123..., secret=xxx 等
-        pattern: /(?:api[_-]?key|secret|token|password)=[\x21-\x7e]{8,}/gi,
+        // 要求：值至少 12 字符（过滤单字母/短占位符）
+        pattern: /(?:api[_-]?key|secret|token|password)=[\x21-\x7e]{12,}/gi,
         label: 'Credential',
     },
 ];
