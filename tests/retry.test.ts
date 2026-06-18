@@ -324,6 +324,62 @@ test('AbortSignal 中止重试', async () => {
     assert.ok(attempts < 3, `abort 应在重试前终止，实际 ${attempts} 次`);
 });
 
+// --- maxTotalTimeout ---
+
+test('maxTotalTimeout 总超时后停止重试', async () => {
+    const startTime = Date.now();
+    let attempts = 0;
+    try {
+        await withRetry(
+            async () => {
+                attempts++;
+                throw new Error('fail');
+            },
+            {
+                retries: 10,          // 足够多的重试次数
+                delay: 50,            // 每次等 50ms
+                jitter: false,
+                maxTotalTimeout: 80,  // 但总超时只有 80ms
+            },
+        );
+    } catch (e) {
+        const elapsed = Date.now() - startTime;
+        // 总时间应接近 maxTotalTimeout（可能执行了 1-2 次后超时）
+        assert.ok(elapsed < 200, `总时间应在 maxTotalTimeout 附近，实际 ${elapsed}ms`);
+        assert.ok(attempts < 5, `不应执行太多次，实际 ${attempts} 次`);
+    }
+});
+
+test('maxTotalTimeout 未超时时正常完成', async () => {
+    let calls = 0;
+    const result = await withRetry(
+        async () => {
+            calls++;
+            if (calls < 3) throw new Error('fail');
+            return 'success';
+        },
+        {
+            retries: 5,
+            delay: 10,
+            jitter: false,
+            maxTotalTimeout: 5000, // 足够大，不触发
+        },
+    );
+    assert.equal(result, 'success');
+    assert.equal(calls, 3);
+});
+
+test('maxTotalTimeout 不设置时不受限', async () => {
+    let calls = 0;
+    try {
+        await withRetry(
+            async () => { calls++; throw new Error('fail'); },
+            { retries: 3, delay: 10, jitter: false },
+        );
+    } catch { /* expected */ }
+    assert.equal(calls, 3, '不设置 maxTotalTimeout 应执行全部重试');
+});
+
 // --- 边界条件 ---
 
 test('边界：retries=0 不重试', async () => {

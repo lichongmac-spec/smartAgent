@@ -24,6 +24,7 @@ import { logger } from './logger.js';
 import { renderKVTable } from './utils/table.js';
 import { setupAutocomplete, chatCompleter } from './utils/autocomplete.js';
 import { withRetry, type RetryOptions } from './utils/retry.js';
+import { withTimeout, withTimeoutAndSignal, TimeoutError } from './utils/timeout.js';
 
 export function registerAdvancedCommands(program: Command): void {
     // ============================================================
@@ -139,6 +140,7 @@ export function registerAdvancedCommands(program: Command): void {
         .option('-s, --system-prompt <text>', '自定义系统提示词')
         .option('--token-limit <number>', 'token 上限（裁剪用）', parseInt)
         .option('--retry <times>', '失败后自动重试次数（默认 0）', parseInt)
+        .option('--timeout <ms>', '操作超时时间（毫秒，默认无限制）', parseInt)
         .action(async (prompt: string, options: {
             model?: string;
             verbose?: boolean;
@@ -147,6 +149,7 @@ export function registerAdvancedCommands(program: Command): void {
             systemPrompt?: string;
             tokenLimit?: number;
             retry?: number;
+            timeout?: number;
         }) => {
             try {
                 const config = configManager.get();
@@ -202,22 +205,40 @@ export function registerAdvancedCommands(program: Command): void {
                     if (stdinContent) logger.info('📥 检测到管道输入');
                     if (fileContent) logger.info('📄 已加载上下文文件');
                     if (options.tokenLimit) logger.info(`📏 Token 上限: ${options.tokenLimit}`);
+                    if (options.timeout) logger.info(`⏱ 超时时间: ${options.timeout}ms`);
                     logger.blank();
                 }
 
-                // ---- 6. 调用 LLM（支持重试） ----
+                // ---- 6. 调用 LLM（支持重试 + 超时 + 取消） ----
                 // TODO: 替换为真实 API 调用 + SSE 流式解析
                 const retryTimes = options.retry ?? 0;
+                const timeoutMs = options.timeout;
                 const mockResponse =
                     `收到问题: "${prompt}"\n\n` +
                     `当前上下文包含 ${ctx.length} 条消息，` +
                     `估算 ${ctx.totalTokens} tokens。\n\n` +
                     `这是模拟回复 —— 接入真实 LLM API 后将返回实际内容。`;
 
-                const generateResponse = async (): Promise<string> => {
-                    // TODO: 接入真实 LLM API
-                    // 模拟：第 1-2 次失败，第 3 次成功（用于验证重试）
+                // 基础 LLM 调用（接受 AbortSignal 以支持真正取消）
+                const callLLM = async (signal?: AbortSignal): Promise<string> => {
+                    // TODO: 接入真实 LLM API 时传递 signal 给 fetch：
+                    //   const res = await fetch(apiUrl, { signal, ... });
+                    signal?.throwIfAborted();
                     return mockResponse;
+                };
+
+                /**
+                 * 组装调用链：
+                 * 1. 最内层：withTimeoutAndSignal（超时 + 取消）
+                 * 2. 最外层：withRetry（自动重试）
+                 *
+                 * 这样超时后 AbortSignal 触发 → 原请求取消 → 不会堆积并发请求
+                 */
+                const executeCall = async (): Promise<string> => {
+                    if (timeoutMs) {
+                        return withTimeoutAndSignal(callLLM, timeoutMs);
+                    }
+                    return callLLM();
                 };
 
                 let response: string;
@@ -229,9 +250,9 @@ export function registerAdvancedCommands(program: Command): void {
                             logger.warn(`⚠ 第 ${attempt} 次重试（${wait}ms 后）: ${err.message}`);
                         },
                     };
-                    response = await withRetry(generateResponse, retryOpts);
+                    response = await withRetry(executeCall, retryOpts);
                 } else {
-                    response = await generateResponse();
+                    response = await executeCall();
                 }
 
                 if (options.stream !== false) {

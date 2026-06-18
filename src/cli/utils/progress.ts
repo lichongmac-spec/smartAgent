@@ -15,8 +15,7 @@
  *   ], { concurrent: true });
  */
 
-import { Listr } from 'listr2';
-import { isCI } from '../env-check.js';
+import { Listr, type ListrTask } from 'listr2';
 import { getLoggerConfig } from '../logger.js';
 
 // ============================================================
@@ -111,8 +110,8 @@ export async function runTasks(
         ci,
     } = options;
 
-    // 判断是否使用简化渲染器
-    const isCIEnv = ci ?? isCI();
+    // 判断是否使用简化渲染器（直接读取环境变量，避免循环依赖）
+    const isCIEnv = ci ?? (process.env.CI !== undefined && process.env.CI !== 'false' && process.env.CI !== '0');
     const logConfig = getLoggerConfig();
     const useSimple = isCIEnv || (logConfig.noColor ?? false);
 
@@ -128,7 +127,7 @@ export async function runTasks(
 
     // 创建 Listr 实例
     // listr2 中 concurrent 可为 boolean 或 number（数值即并发上限）
-    const listr = new Listr(listrTasks as any, {
+    const listr = new Listr(listrTasks, {
         concurrent: concurrent ? (concurrency > 0 ? concurrency : true) : false,
         exitOnError,
         renderer: useSimple ? 'simple' : 'default',
@@ -148,28 +147,28 @@ export async function runTasks(
 // ============================================================
 
 /** 将 TaskDef 转换为 listr2 任务对象 */
-function buildListrTask(def: TaskDef) {
-    const task: Record<string, unknown> = {
+function buildListrTask(def: TaskDef): ListrTask {
+    const listrTask: ListrTask = {
         title: def.title,
-        task: async (ctx: TaskContext, listrTask: Record<string, unknown>) => {
-            // 包装控制接口
+        task: async (ctx: TaskContext, task) => {
+            // 包装控制接口（listr2 task 对象支持 title/output/skip 方法）
             const control: TaskControl = {
-                setTitle: (title: string) => { listrTask.title = title; },
-                setOutput: (output: string) => { listrTask.output = output; },
-                skip: (msg?: string) => { listrTask.skip = msg ?? true; },
+                setTitle: (title: string) => { task.title = title; },
+                setOutput: (output: string) => { task.output = output; },
+                skip: (msg?: string) => { task.skip(msg); },
             };
 
             try {
                 await def.task(ctx, control);
 
-                // 子任务：返回新的 Listr 实例
+                // 子任务：使用 task.newListr() 创建嵌套列表
                 if (def.subtasks && def.subtasks.length > 0) {
                     const subTasks = def.subtasks
                         .filter((sub) => sub.enabled !== false)
                         .map((sub) => buildListrTask(sub));
 
                     if (subTasks.length > 0) {
-                        return new Listr(subTasks as any, {
+                        return task.newListr(subTasks, {
                             concurrent: false,
                             exitOnError: false,
                             rendererOptions: { collapseSubtasks: false },
@@ -188,8 +187,8 @@ function buildListrTask(def: TaskDef) {
 
     // 只在显式设置时添加 enabled
     if (def.enabled !== undefined) {
-        task.enabled = def.enabled;
+        listrTask.enabled = def.enabled;
     }
 
-    return task;
+    return listrTask;
 }

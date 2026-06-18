@@ -44,6 +44,8 @@ export interface RetryOptions {
     shouldRetry?: (error: Error) => boolean;
     /** 中止信号 */
     signal?: AbortSignal;
+    /** 总超时时间（毫秒），超过后放弃重试。默认不限制 */
+    maxTotalTimeout?: number;
 }
 
 // ============================================================
@@ -118,6 +120,7 @@ export async function withRetry<T>(
         onRetry,
         shouldRetry,
         signal,
+        maxTotalTimeout,
     } = options;
 
     // retries=0：不重试，直接执行
@@ -126,11 +129,17 @@ export async function withRetry<T>(
     }
 
     let lastError: unknown;
+    const startTime = Date.now();
 
     for (let attempt = 1; attempt <= retries; attempt++) {
         // 检查是否已中止
         if (signal?.aborted) {
             throw new Error('操作已中止');
+        }
+
+        // 检查总超时
+        if (maxTotalTimeout && Date.now() - startTime >= maxTotalTimeout) {
+            throw lastError ?? new Error(`总重试时间超过限制 (${maxTotalTimeout}ms)`);
         }
 
         try {

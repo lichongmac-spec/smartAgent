@@ -27,6 +27,8 @@
     "test:retry": "tsx tests/retry.test.ts",
     "test:retry:debug": "tsx --inspect-brk tests/retry.test.ts",
     "test:progress": "tsx tests/progress.test.ts",
+    "test:timeout": "tsx tests/timeout.test.ts",
+    "test:timeout:debug": "tsx --inspect-brk tests/timeout.test.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli/index.js",

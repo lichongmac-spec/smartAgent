@@ -16,7 +16,6 @@
 import { table, getBorderCharacters } from 'table';
 import type { Alignment } from 'table';
 import { fileURLToPath } from 'url';
-import { isCI } from '../env-check.js';
 
 // ============================================================
 //  配置（由调用方注入 / 环境变量）
@@ -52,6 +51,17 @@ function inferColumnAlignments(
     }
 
     return alignments;
+}
+
+// ============================================================
+//  内部工具
+// ============================================================
+
+/** 检测 CI 环境（直接读取环境变量，避免循环依赖） */
+function isCI(): boolean {
+    return process.env.CI !== undefined
+        && process.env.CI !== 'false'
+        && process.env.CI !== '0';
 }
 
 // ============================================================
@@ -175,7 +185,9 @@ export function renderKVTable(
         } else {
             const maxKeyLen = Math.max(...entries.map(([k]) => k.length));
             for (const [key, value] of entries) {
-                const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                const displayValue = typeof value === 'object' && value !== null
+                    ? JSON.stringify(value)
+                    : String(value);
                 lines.push(`  ${key.padEnd(maxKeyLen)} : ${displayValue}`);
             }
         }
@@ -186,7 +198,7 @@ export function renderKVTable(
 
     const rows: string[][] = entries.map(([key, value]) => [
         key,
-        typeof value === 'object' ? JSON.stringify(value) : String(value),
+        typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value),
     ]);
 
     return renderTable(rows, ['Key', 'Value'], options);
