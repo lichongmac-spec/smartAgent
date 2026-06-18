@@ -12,6 +12,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { encrypt, decrypt, isEncrypted } from '../src/cli/utils/encrypt.js';
 
 // ============================================================
 //  测试辅助
@@ -239,8 +240,8 @@ async function run() {
         }
     });
 
-    // 测试 6: set
-    await testAsync('set 写入项目配置文件', async () => {
+    // 测试 6: set - 加密存储
+    await testAsync('set 写入时 apiKey 加密存储', async () => {
         const { dir, env } = setupTempDir();
         try {
             const { ConfigManager } = await import('../src/cli/config-manager.js');
@@ -249,20 +250,23 @@ async function run() {
             mgr.set('apiKey', 'sk-new-key');
             mgr.set('verbose', true);
 
-            assertEqual(mgr.getValue('apiKey'), 'sk-new-key', '内存 apiKey');
+            // 内存中的值应为明文
+            assertEqual(mgr.getValue('apiKey'), 'sk-new-key', '内存 apiKey 明文');
             assertEqual(mgr.getValue('verbose'), true, '内存 verbose');
 
+            // 磁盘文件中的 apiKey 应为密文
             const fileContent = readFileSync(join(dir, '.smartagentrc'), 'utf-8');
             const parsed = JSON.parse(fileContent);
-            assertEqual(parsed.apiKey, 'sk-new-key', '文件 apiKey');
-            assertEqual(parsed.verbose, true, '文件 verbose');
+            assertOk(isEncrypted(parsed.apiKey), '磁盘 apiKey 已加密');
+            assertOk(!parsed.apiKey.includes('sk-new-key'), '磁盘不包含明文 key');
+            assertEqual(parsed.verbose, true, '非敏感字段仍为明文');
         } finally {
             cleanupTempDir(dir, env);
         }
     });
 
-    // 测试 7: setGlobal
-    await testAsync('setGlobal 写入全局配置文件', async () => {
+    // 测试 7: setGlobal - 加密存储
+    await testAsync('setGlobal 写入时 apiKey 加密存储', async () => {
         const { dir, env } = setupTempDir();
         const globalCfgDir = join(dir, '.config', 'smartagent');
         try {
@@ -277,14 +281,15 @@ async function run() {
             assertOk(existsSync(globalPath), '全局配置文件已创建');
 
             const content = JSON.parse(readFileSync(globalPath, 'utf-8'));
-            assertEqual(content.apiKey, 'sk-global', '全局 apiKey');
+            assertOk(isEncrypted(content.apiKey), '全局 apiKey 已加密');
+            assertEqual(mgr.getValue('apiKey'), 'sk-global', '内存 apiKey 明文');
         } finally {
             cleanupTempDir(dir, env);
         }
     });
 
     // 测试 8: reload
-    await testAsync('reload 热重载配置', async () => {
+    await testAsync('reload 热重载配置（明文文件向后兼容）', async () => {
         const { dir, env } = setupTempDir();
         try {
             const { ConfigManager } = await import('../src/cli/config-manager.js');
@@ -292,11 +297,34 @@ async function run() {
 
             assertEqual(mgr.getValue('apiKey', undefined), undefined, '初始无 apiKey');
 
+            // 写入明文 apiKey（模拟旧版配置文件）
             writeFileSync(join(dir, '.smartagentrc'), JSON.stringify({ apiKey: 'sk-reloaded' }));
 
             const newConfig = mgr.reload();
-            assertEqual(newConfig.apiKey, 'sk-reloaded', '重载后读到新 apiKey');
+            assertEqual(newConfig.apiKey, 'sk-reloaded', '重载后读到旧版明文 apiKey');
             assertEqual(mgr.getValue('apiKey'), 'sk-reloaded', 'getValue 同步更新');
+        } finally {
+            cleanupTempDir(dir, env);
+        }
+    });
+
+    // 测试 8b: 加载加密配置文件
+    await testAsync('加载预加密的配置文件', async () => {
+        const { dir, env } = setupTempDir();
+        try {
+            const encryptedKey = encrypt('sk-encrypted');
+
+            writeFileSync(join(dir, '.smartagentrc'), JSON.stringify({
+                apiKey: encryptedKey,
+                model: 'deepseek-reasoner',
+            }));
+
+            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const mgr = new ConfigManager();
+            const config = mgr.get();
+
+            assertEqual(config.apiKey, 'sk-encrypted', '加密 apiKey 正确解密');
+            assertEqual(config.model, 'deepseek-reasoner', '非敏感字段不受影响');
         } finally {
             cleanupTempDir(dir, env);
         }

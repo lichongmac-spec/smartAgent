@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { decrypt, isEncrypted } from '../src/cli/utils/encrypt.js';
 
 // ============================================================
 //  测试辅助
@@ -151,7 +152,9 @@ async function run() {
 
         const raw = readFileSync(join(testDir, '.smartagentrc'), 'utf-8');
         const parsed = JSON.parse(raw);
-        assertEqual(parsed.apiKey, 'sk-test-123');
+        // 磁盘中 apiKey 应为密文
+        assertOk(isEncrypted(parsed.apiKey), '磁盘 apiKey 加密');
+        assertEqual(decrypt(parsed.apiKey), 'sk-test-123', '解密后还原正确');
     });
 
     await testAsync('config set model', async () => {
@@ -178,7 +181,9 @@ async function run() {
         assertOk(existsSync(globalPath), '全局配置文件已创建');
         const raw = readFileSync(globalPath, 'utf-8');
         const parsed = JSON.parse(raw);
-        assertEqual(parsed.apiKey, 'sk-global-cmd');
+        // 磁盘中 apiKey 应为密文
+        assertOk(isEncrypted(parsed.apiKey), '全局 apiKey 加密');
+        assertEqual(decrypt(parsed.apiKey), 'sk-global-cmd', '解密后还原正确');
     });
 
     // ============================================================

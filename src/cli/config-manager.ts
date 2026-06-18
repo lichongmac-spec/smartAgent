@@ -24,6 +24,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join, dirname } from 'path';
 import { z } from 'zod';
+import { encrypt, decrypt } from './utils/encrypt.js';
 
 // ============================================================
 //  1. 定义配置 Schema
@@ -175,11 +176,15 @@ export class ConfigManager {
             },
         ];
 
-        // 依次合并配置
+        // 依次合并配置（每个文件读取后解密 apiKey）
         for (const source of sources) {
             try {
                 const data = source.loader();
                 if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+                    // 解密文件中的加密字段（如 apiKey）
+                    if (typeof data.apiKey === 'string') {
+                        data.apiKey = decrypt(data.apiKey);
+                    }
                     raw = deepMerge(raw, data);
                 }
             } catch (error) {
@@ -248,14 +253,19 @@ export class ConfigManager {
         this.saveToFile(this.paths.global);
     }
 
-    /** 保存配置到指定文件 */
+    /** 保存配置到指定文件（敏感字段自动加密） */
     private saveToFile(filePath: string): void {
         try {
             const dir = dirname(filePath);
             if (!existsSync(dir)) {
                 mkdirSync(dir, { recursive: true });
             }
-            writeFileSync(filePath, JSON.stringify(this.config, null, 2));
+            // 写入磁盘前加密敏感字段
+            const diskConfig = { ...this.config };
+            if (diskConfig.apiKey) {
+                diskConfig.apiKey = encrypt(diskConfig.apiKey);
+            }
+            writeFileSync(filePath, JSON.stringify(diskConfig, null, 2));
             console.log(`✅ 配置已写入: ${filePath}`);
         } catch (error) {
             console.error(`❌ 写入配置失败: ${filePath}`);
