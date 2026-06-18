@@ -59,4 +59,4 @@ CLI交互；
 ## 23. 工具调用可视化模块 (Tool Call Visualization)
 ### 23.1 可视化展示工具调用流程
 
-## 
+## 24. Agent 端到端（E2E）流程测试

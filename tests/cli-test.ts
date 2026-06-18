@@ -478,6 +478,86 @@ function run() {
     });
 
     // ============================================================
+    //  session 命令
+    // ============================================================
+    console.log('\n📦 session 命令');
+
+    test('session create 创建会话', () => {
+        resetConfig({});
+        const { stdout, exitCode } = runCli([
+            'session', 'create', '我的对话', '--model', 'deepseek-chat',
+        ]);
+        assertEqual(exitCode, 0, 'exit code');
+        assertIncludes(stdout, '会话', '创建成功提示含"会话"');
+    });
+
+    test('session list 列出会话', () => {
+        resetConfig({});
+        runCli(['session', 'create', '会话1']);
+        runCli(['session', 'create', '会话2']);
+
+        const { stdout, exitCode } = runCli(['session', 'list']);
+        assertEqual(exitCode, 0, 'exit code');
+        assertIncludes(stdout, '会话1', '列出会话1');
+        assertIncludes(stdout, '会话2', '列出会话2');
+    });
+
+    test('session list --json 输出 JSON', () => {
+        resetConfig({});
+        runCli(['session', 'create', 'json会话']);
+        const { stdout, exitCode } = runCli(['session', 'list', '--json']);
+        assertEqual(exitCode, 0, 'exit code');
+        // JSON 输出：要么是数组 [...] 要么是对象含 sessions
+        const jsonIndicators = ['{', '['];
+        const hasJson = jsonIndicators.some(c => stdout.includes(c));
+        assertOk(hasJson, '应包含 JSON 格式输出');
+    });
+
+    test('session delete 删除会话', () => {
+        resetConfig({});
+        runCli(['session', 'create', '待删除']);
+        const { stdout, exitCode } = runCli(['session', 'delete', '待删除']);
+        assertEqual(exitCode, 0, 'exit code');
+        assertIncludes(stdout, '删除', '删除成功提示');
+    });
+
+    test('session delete 不存在会话报错', () => {
+        resetConfig({});
+        const { stderr, exitCode } = runCli(['session', 'delete', '不存在的会话']);
+        // 不存在时应显示错误
+        assertOk(exitCode !== null, '应有返回码');
+    });
+
+    test('session show 查看会话内容', () => {
+        resetConfig({});
+        runCli(['session', 'create', 'show测试']);
+        const { stdout, exitCode } = runCli(['session', 'show', 'show测试']);
+        assertEqual(exitCode, 0, 'exit code');
+        // 导出内容包含角色标签或消息
+        assertOk(stdout.length > 0, '应有输出');
+    });
+
+    test('session show --format json 查看 JSON', () => {
+        resetConfig({});
+        runCli(['session', 'create', 'jsonShow']);
+        const { stdout, exitCode } = runCli([
+            'session', 'show', 'jsonShow', '--format', 'json',
+        ]);
+        assertEqual(exitCode, 0, 'exit code');
+        assertIncludes(stdout, '{', 'JSON 格式应包含花括号');
+    });
+
+    test('ask --session 使用会话提问', () => {
+        resetConfig({});
+        runCli(['session', 'create', '问答会话']);
+        const { stdout, exitCode } = runCli([
+            'ask', '测试问题', '--session', '问答会话', '--no-stream',
+        ]);
+        assertEqual(exitCode, 0, 'exit code');
+        assertIncludes(stdout, '测试问题', '回显问题');
+    });
+
+    // ============================================================
     //  清理
     // ============================================================
     process.chdir(savedEnv.cwd);

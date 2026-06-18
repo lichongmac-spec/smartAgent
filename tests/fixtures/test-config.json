@@ -1,0 +1,12 @@
+{
+  "model": "deepseek-chat",
+  "maxTokens": 4096,
+  "temperature": 0.7,
+  "verbose": false,
+  "timeout": 30000,
+  "retry": {
+    "maxAttempts": 3,
+    "delay": 1000
+  },
+  "systemPrompt": "你是一个 AI 助手"
+}
