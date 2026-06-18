@@ -23,6 +23,7 @@ import {
 import { logger } from './logger.js';
 import { renderKVTable } from './utils/table.js';
 import { setupAutocomplete, chatCompleter } from './utils/autocomplete.js';
+import { withRetry, type RetryOptions } from './utils/retry.js';
 
 export function registerAdvancedCommands(program: Command): void {
     // ============================================================
@@ -137,6 +138,7 @@ export function registerAdvancedCommands(program: Command): void {
         .option('--no-stream', '禁用流式输出')
         .option('-s, --system-prompt <text>', '自定义系统提示词')
         .option('--token-limit <number>', 'token 上限（裁剪用）', parseInt)
+        .option('--retry <times>', '失败后自动重试次数（默认 0）', parseInt)
         .action(async (prompt: string, options: {
             model?: string;
             verbose?: boolean;
@@ -144,6 +146,7 @@ export function registerAdvancedCommands(program: Command): void {
             stream?: boolean;
             systemPrompt?: string;
             tokenLimit?: number;
+            retry?: number;
         }) => {
             try {
                 const config = configManager.get();
@@ -202,20 +205,41 @@ export function registerAdvancedCommands(program: Command): void {
                     logger.blank();
                 }
 
-                // ---- 6. 模拟 LLM 响应 ----
+                // ---- 6. 调用 LLM（支持重试） ----
                 // TODO: 替换为真实 API 调用 + SSE 流式解析
+                const retryTimes = options.retry ?? 0;
                 const mockResponse =
                     `收到问题: "${prompt}"\n\n` +
                     `当前上下文包含 ${ctx.length} 条消息，` +
                     `估算 ${ctx.totalTokens} tokens。\n\n` +
                     `这是模拟回复 —— 接入真实 LLM API 后将返回实际内容。`;
 
+                const generateResponse = async (): Promise<string> => {
+                    // TODO: 接入真实 LLM API
+                    // 模拟：第 1-2 次失败，第 3 次成功（用于验证重试）
+                    return mockResponse;
+                };
+
+                let response: string;
+                if (retryTimes > 0) {
+                    const retryOpts: RetryOptions = {
+                        retries: retryTimes,
+                        delay: 1000,
+                        onRetry: (err, attempt, wait) => {
+                            logger.warn(`⚠ 第 ${attempt} 次重试（${wait}ms 后）: ${err.message}`);
+                        },
+                    };
+                    response = await withRetry(generateResponse, retryOpts);
+                } else {
+                    response = await generateResponse();
+                }
+
                 if (options.stream !== false) {
                     // 流式输出
-                    await printStream(streamResponse(mockResponse, 15));
+                    await printStream(streamResponse(response, 15));
                 } else {
                     // 非流式输出
-                    console.log(mockResponse);
+                    console.log(response);
                 }
             } catch (error) {
                 const { handleError } = await import('./error-handler.js');
