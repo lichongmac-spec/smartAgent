@@ -168,7 +168,12 @@ export function filePathCompleter(line: string): CompletionItem[] {
     }
 
     return entries
-        .filter((name) => name.startsWith(prefix) && !name.startsWith('.'))
+        .filter((name) => {
+            if (!name.startsWith(prefix)) return false;
+            // 当用户输入以 . 开头时，允许补全隐藏文件（如 .env）
+            if (prefix.startsWith('.')) return true;
+            return !name.startsWith('.');
+        })
         .map((name): CompletionItem => {
             const fullPath = join(dir, name);
             let display = lastToken.includes('/')

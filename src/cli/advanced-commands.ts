@@ -489,8 +489,21 @@ export function registerAdvancedCommands(program: Command): void {
         .option('--type <type>', '错误类型: user, network, system, config')
         .option('--show-stack', '显示堆栈信息')
         .action(async (options) => {
-            // ✅ 动态导入错误处理模块
-            const { userError, networkError, systemError, configError } = await import('./error-handler.js');
+            // 动态导入错误处理模块（含加载失败保护）
+            let userError: (msg: string) => Error;
+            let networkError: (msg: string) => Error;
+            let systemError: (msg: string) => Error;
+            let configError: (msg: string) => Error;
+            try {
+                const handlers = await import('./error-handler.js');
+                userError = handlers.userError;
+                networkError = handlers.networkError;
+                systemError = handlers.systemError;
+                configError = handlers.configError;
+            } catch {
+                console.log('❌ 错误处理模块加载失败，请检查项目安装是否完整');
+                process.exit(1);
+            }
 
             // ✅ 使用类型映射，避免大量 switch-case
             const errorMap: Record<string, () => Error> = {
