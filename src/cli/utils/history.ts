@@ -66,7 +66,9 @@ export function searchHistory(session: string, query: string): string[] {
  * 为 readline 设置历史记录
  *
  * readline 内置的 history 属性存储历史行，上下键自动翻找。
- * 此函数在 line 事件触发后自动记录命令，并在会话结束时保存。
+ * 直接添加 line 监听器记录每一行，不在 rl.on 上做包装以避免：
+ * - 重复注册导致内存泄漏
+ * - 影响其他监听器的正常注册
  *
  * @param rl - readline 实例
  * @param session - 会话名称（用于区分不同场景，如 'agent-chat'）
@@ -85,31 +87,20 @@ export function setupHistory(
     rlAny.history = persisted.slice(-maxSize);
     rlAny.historyIndex = rlAny.history.length;
 
-    // 在读取每一行时记录
-    const origOn = rl.on.bind(rl);
-    rl.on = function (event: string, listener: (...args: any[]) => void) {
-        if (event === 'line') {
-            const wrapped = (line: string) => {
-                // 先调用原始监听器
-                listener(line);
-
-                // 记录到 history（非空、非斜杠命令）
-                if (line.trim() && !line.startsWith('/')) {
-                    const h: string[] = rlAny.history || [];
-                    // 去重：连续相同行只保留一条
-                    if (h.length === 0 || h[h.length - 1] !== line) {
-                        h.push(line);
-                        if (h.length > maxSize * 2) {
-                            // 裁剪到 maxSize
-                            rlAny.history = h.slice(-maxSize);
-                        }
-                        // 持久化
-                        saveHistory(session, h);
-                    }
+    // 直接添加 line 监听器记录历史（不覆盖 rl.on）
+    rl.on('line', (line: string) => {
+        if (line.trim() && !line.startsWith('/')) {
+            const h: string[] = rlAny.history || [];
+            // 去重：连续相同行只保留一条
+            if (h.length === 0 || h[h.length - 1] !== line) {
+                h.push(line);
+                if (h.length > maxSize * 2) {
+                    // 裁剪到 maxSize
+                    rlAny.history = h.slice(-maxSize);
                 }
-            };
-            return origOn(event, wrapped);
+                // 持久化
+                saveHistory(session, h);
+            }
         }
-        return origOn(event, listener);
-    };
+    });
 }

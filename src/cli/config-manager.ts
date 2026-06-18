@@ -88,7 +88,10 @@ function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>,
     for (const key of Object.keys(source) as (keyof T)[]) {
         const sourceVal = source[key];
         const targetVal = result[key];
-        if (
+        // 数组：合并去重（避免直接覆盖丢失数据）
+        if (Array.isArray(sourceVal) && Array.isArray(targetVal)) {
+            result[key] = [...new Set([...targetVal, ...sourceVal])] as T[keyof T];
+        } else if (
             sourceVal !== null &&
             typeof sourceVal === 'object' &&
             !Array.isArray(sourceVal) &&

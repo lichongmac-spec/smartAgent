@@ -15,7 +15,7 @@ import { configManager } from './config-manager.js';
 import { checkNodeVersion, isCI } from './env-check.js';
 import { setupGracefulShutdown } from './error-handler.js';
 import { configureLogger } from './logger.js';
-import { registerAliases } from './utils/alias.js';
+import { expandAlias } from './utils/alias.js';
 import { setVerbose } from './utils/debug.js';
 
 // ============ 1. 环境检查 ============
@@ -50,11 +50,6 @@ program
     .description('SmartAgent CLI - 智能助手')
     .version('1.0.0');
 
-// ============ 3.5 注册命令别名 ============
-// 必须在注册命令前拦截参数，使别名能映射到已注册的命令
-// 例如: agent cfg list → agent config list
-registerAliases(program);
-
 // ============ 4. 注册所有命令 ============
 registerAdvancedCommands(program);
 
@@ -64,7 +59,10 @@ registerAdvancedCommands(program);
 //       → argv: [node, script, '--', ask, hello, --no-stream]
 //       → 过滤后: [node, script, ask, hello, --no-stream]
 const cleanedArgv = process.argv.filter(arg => arg !== '--');
-program.parse(cleanedArgv);
+
+// 预处理别名展开（如 cfg → config、q → ask），在 Commander 解析前完成
+const expandedArgv = [cleanedArgv[0], cleanedArgv[1], ...expandAlias(cleanedArgv.slice(2))];
+program.parse(expandedArgv);
 
 // ============ 6. 无参数时显示帮助 ============
 if (!process.argv.slice(2).length) {

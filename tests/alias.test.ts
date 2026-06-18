@@ -13,8 +13,7 @@
  *   8. registerAliases — 拦截 parse 方法
  */
 
-import { getAliasMap, expandAlias, registerAliases } from '../src/cli/utils/alias.js';
-import { Command } from 'commander';
+import { getAliasMap, expandAlias } from '../src/cli/utils/alias.js';
 
 // ============================================================
 //  测试辅助
@@ -114,62 +113,41 @@ test('expandAlias — q 不带参数', () => {
 });
 
 // ============================================================
-//  3. registerAliases — Commander 集成
+//  3. expandAlias — 与 argv 预处理集成
 // ============================================================
 
-test('registerAliases 注入 parse 拦截器', () => {
-    const program = new Command();
-    const origParse = program.parse.bind(program);
-
-    registerAliases(program);
-
-    // 验证 parse 已被替换（不是原始引用）
-    assert(program.parse !== origParse, 'parse 方法应被替换');
+test('expandAlias 模拟 argv 预处理（cfg → config）', () => {
+    // 模拟 process.argv: [node, script, 'cfg', 'list']
+    const rawArgs = ['cfg', 'list'];
+    const expanded = expandAlias(rawArgs);
+    assertEq(expanded, ['config', 'list'], 'cfg list → config list');
 });
 
-test('registerAliases — cfg 别名通过 parse 拦截 argv', () => {
-    const program = new Command();
-    // 注册一个 config 命令，防止 Commander 报错
-    program.command('config <action>').action(() => {});
-
-    registerAliases(program);
-
-    const argv = ['node', 'script.js', 'cfg', 'list'];
-    program.parse(argv);
-
-    // 验证 argv 已被修改：cfg 变为 config
-    assertEq(argv[2], 'config', 'argv[2] 应变为 config');
-    assertEq(argv[3], 'list', 'argv[3] 应保持 list');
-    assertEq(argv.length, 4, 'argv 长度应为 4');
+test('expandAlias 模拟 argv 预处理（非别名原样）', () => {
+    const rawArgs = ['ask', 'hello'];
+    const expanded = expandAlias(rawArgs);
+    assertEq(expanded, ['ask', 'hello'], '非别名应原样输出');
 });
 
-test('registerAliases — 非别名命令不影响 argv', () => {
-    const program = new Command();
-    // 注册 ask 命令
-    program.command('ask <query>').action(() => {});
-
-    registerAliases(program);
-
-    const argv = ['node', 'script.js', 'ask', 'hello'];
-    program.parse(argv);
-
-    assertEq(argv[2], 'ask', 'ask 命令应保持不变');
-    assertEq(argv[3], 'hello', '参数应保持不变');
+test('expandAlias 模拟 argv 预处理（q + --no-stream）', () => {
+    const rawArgs = ['q', '你好', '--no-stream'];
+    const expanded = expandAlias(rawArgs);
+    assertEq(expanded, ['ask', '你好', '--no-stream'], 'q 你好 --no-stream → ask 你好 --no-stream');
 });
 
-test('registerAliases — q 别名展开带参数', () => {
-    const program = new Command();
-    // 注册 ask 命令
-    program.command('ask <query>').option('--no-stream').action(() => {});
+test('expandAlias 模拟 argv 预处理（空参数）', () => {
+    const rawArgs: string[] = [];
+    const expanded = expandAlias(rawArgs);
+    assertEq(expanded, [], '空输入应返回空数组');
+});
 
-    registerAliases(program);
-
-    const argv = ['node', 'script.js', 'q', '你好', '--no-stream'];
-    program.parse(argv);
-
-    assertEq(argv[2], 'ask', 'argv[2] 应变为 ask');
-    assertEq(argv[3], '你好', 'argv[3] 应保持');
-    assertEq(argv[4], '--no-stream', 'argv[4] 应保持');
+test('expandAlias 与 Commander 解耦 — 不修改 program 实例', () => {
+    // 验证 expandAlias 是纯函数，不需要 Commander 实例
+    const input = ['cfg', 'set', 'apiKey', 'sk-123'];
+    const output1 = expandAlias(input);
+    const output2 = expandAlias(input); // 幂等
+    assertEq(output1, output2, '纯函数多次调用应一致');
+    assertEq(output1, ['config', 'set', 'apiKey', 'sk-123'], 'cfg set → config set');
 });
 
 // ============================================================
