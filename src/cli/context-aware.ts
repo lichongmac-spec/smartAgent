@@ -18,7 +18,7 @@
  *   const fileContent = loadContextFromFile('./notes.md');
  */
 
-import { readFileSync, existsSync, statSync } from 'fs';
+import { readFileSync, existsSync, statSync, openSync, readSync, closeSync } from 'fs';
 import { resolve } from 'path';
 
 // ============================================================
@@ -316,14 +316,16 @@ export class ContextManager {
             }
         }
 
-        const removed = keepFrom; // 前面被丢弃的条数
-
-        if (removed > 0) {
-            this.messages = [...systemMessages, ...nonSystemMessages.slice(keepFrom)];
+        // 确保至少保留最后 1 条非 system 消息，防止对话上下文完全丢失
+        if (keepFrom > 0) {
+            const minKeep = Math.min(1, nonSystemMessages.length);
+            const keepStart = Math.min(keepFrom, nonSystemMessages.length - minKeep);
+            this.messages = [...systemMessages, ...nonSystemMessages.slice(keepStart)];
             this._updatedAt = new Date();
+            return keepStart; // 返回实际删除数量（可能因 minKeep 调整而小于 keepFrom）
         }
 
-        return removed;
+        return 0;
     }
 
     // ---- 序列化 ----
@@ -592,17 +594,25 @@ export async function readFromStdin(options: StdinOptions = {}): Promise<string>
     return new Promise((resolve) => {
         let data = '';
         let resolved = false;
+        let timer: ReturnType<typeof setTimeout>;
+
+        const cleanup = (): void => {
+            clearTimeout(timer);
+            process.stdin.removeAllListeners('data');
+            process.stdin.removeAllListeners('end');
+            process.stdin.removeAllListeners('error');
+        };
 
         const finish = (result: string) => {
             if (resolved) return;
             resolved = true;
-            clearTimeout(timer);
+            cleanup();
             resolve(result);
         };
 
         // 超时保护
-        const timer = setTimeout(() => {
-            finish(data.trim()); // 超时时返回已读取的部分
+        timer = setTimeout(() => {
+            finish(data.trim());
         }, timeout);
 
         process.stdin.on('data', (chunk: Buffer) => {
@@ -671,9 +681,21 @@ export function loadContextFromFile(
         return { path: resolved, size: 0, content: '', truncated: false };
     }
 
-    // 读取前 512 字节检测是否为二进制
-    const probeBuffer = readFileSync(resolved, { flag: 'r' });
-    const probe = new Uint8Array(probeBuffer.slice(0, Math.min(512, stat.size)));
+    // 超大文件拒绝加载（避免 OOM），默认限 128MB
+    const MAX_FILE_BYTES = 128 * 1024 * 1024;
+    if (stat.size > MAX_FILE_BYTES) {
+        throw new Error(
+            `文件过大 (${(stat.size / 1024 / 1024).toFixed(1)}MB)，拒绝加载。` +
+            `请使用 head -c ${(MAX_FILE_BYTES / 1024 / 1024).toFixed(0)}M 截取文件内容。`,
+        );
+    }
+
+    // 只读前 512 字节检测二进制（避免 readFileSync 加载整个超大文件）
+    const probeFd = openSync(resolved, 'r');
+    const probeBuf = Buffer.allocUnsafe(Math.min(512, stat.size));
+    readSync(probeFd, probeBuf, 0, probeBuf.length, 0);
+    closeSync(probeFd);
+    const probe = new Uint8Array(probeBuf);
     let nullCount = 0;
     for (const byte of probe) {
         if (byte === 0) nullCount++;

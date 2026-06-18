@@ -227,8 +227,8 @@ export const logger = {
 //  2. Spinner
 // ============================================================
 
-/** 创建完整的模拟 Ora 对象（用于 CI 降级） */
-function createMockSpinner(text: string): Ora {
+/** 创建模拟 Ora 对象（CI 降级用，每次新建避免并发状态混乱） */
+function getMockSpinner(text: string): Ora {
     let currentText = text;
     let isSpinning = false;
 
@@ -327,7 +327,7 @@ export async function withSpinner<T>(
     // CI / noColor 环境：降级为纯文本进度
     if (_isCI || _noColor) {
         console.log(`⏳ ${text}`);
-        const mockSpinner = createMockSpinner(text);
+        const mockSpinner = getMockSpinner(text);
 
         try {
             const result = await fn(mockSpinner);

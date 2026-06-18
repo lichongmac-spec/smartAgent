@@ -157,8 +157,12 @@ function formatError(error: AgentError): string {
     }
 
     // 原始错误（错误链）
-    if (error.cause instanceof Error) {
-        parts.push(`  └─ 原因: ${error.cause.message}`);
+    if (error.cause) {
+        if (error.cause instanceof Error) {
+            parts.push(`  └─ 原因: ${error.cause.message}`);
+        } else {
+            parts.push(`  └─ 原因: ${String(error.cause)}`);
+        }
     }
 
     // 堆栈（调试模式）

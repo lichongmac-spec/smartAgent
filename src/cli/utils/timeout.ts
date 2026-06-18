@@ -2,17 +2,19 @@
  * 超时控制模块
  *
  * 防止 Agent 执行任务（如 LLM 调用、文件读取）时卡死。
- * 通过 Promise.race 实现超时自动中断。
+ * 通过 Promise.race 实现超时自动中断，AbortController 实现真正取消。
  *
  * 使用方式：
- *   import { withTimeout, TimeoutError } from './utils/timeout.js';
+ *   import { withTimeoutAndSignal, TimeoutError } from './utils/timeout.js';
  *
- *   // 基本用法
- *   const result = await withTimeout(() => fetch(url), 5000);
+ *   // 推荐：使用 withTimeoutAndSignal（真正可取消）
+ *   const result = await withTimeoutAndSignal(
+ *     (signal) => fetch(url, { signal }),
+ *     5000,
+ *   );
  *
- *   // 捕获超时
  *   try {
- *       await withTimeout(() => callLLM(prompt), 30000);
+ *       await withTimeoutAndSignal((s) => callLLM(prompt, s), 30000);
  *   } catch (err) {
  *       if (err instanceof TimeoutError) {
  *           console.error('请求超时');
@@ -51,33 +53,28 @@ export class TimeoutError extends Error {
  * - fn 先完成 → 清除定时器，返回结果
  * - 定时器先触发 → 抛出 TimeoutError
  *
- * 注意：超时后 fn 仍在后台执行，Promise.race 不会取消 fn。
- * 如需真正取消，请结合 AbortSignal 使用。
+ * **超时后 fn 仍在后台执行，Promise.race 不会取消 fn。**
+ * 如需真正取消，请使用 {@link withTimeoutAndSignal}。
  *
  * @param fn  要包装的异步函数
  * @param ms  超时时间（毫秒）
  * @returns   fn 的成功返回值
  * @throws    TimeoutError（超时）或 fn 本身抛出的错误
+ * @deprecated 使用 {@link withTimeoutAndSignal} 代替，它通过 AbortSignal 真正取消操作
  *
  * @example
- *   // LLM 调用 30 秒超时
+ *   // ❌ 不推荐：超时后 fetch 仍在后台
  *   const reply = await withTimeout(
  *       () => fetch('https://api.openai.com/v1/chat/completions', {...}),
  *       30000,
  *   );
  *
  * @example
- *   // 结合 AbortSignal 真正取消操作
- *   const controller = new AbortController();
- *   try {
- *       await withTimeout(
- *           () => fetch(url, { signal: controller.signal }),
- *           5000,
- *       );
- *   } catch (err) {
- *       controller.abort(); // 取消仍在进行的 fetch
- *       if (err instanceof TimeoutError) { ... }
- *   }
+ *   // ✅ 推荐：使用 withTimeoutAndSignal
+ *   const reply = await withTimeoutAndSignal(
+ *       (signal) => fetch('https://api.openai.com/v1/chat/completions', { signal, ... }),
+ *       30000,
+ *   );
  */
 export async function withTimeout<T>(
     fn: () => Promise<T>,

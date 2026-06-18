@@ -22,7 +22,7 @@
 import { config as dotenvConfig } from 'dotenv';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { z } from 'zod';
 
 // ============================================================
@@ -238,7 +238,7 @@ export class ConfigManager {
     /** 保存配置到指定文件 */
     private saveToFile(filePath: string): void {
         try {
-            const dir = filePath.split('/').slice(0, -1).join('/');
+            const dir = dirname(filePath);
             if (!existsSync(dir)) {
                 mkdirSync(dir, { recursive: true });
             }

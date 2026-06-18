@@ -22,6 +22,7 @@ import {
 } from './context-aware.js';
 import { logger } from './logger.js';
 import { renderKVTable } from './utils/table.js';
+import { redactApiKey } from './utils/secrets.js';
 import { setupAutocomplete, chatCompleter } from './utils/autocomplete.js';
 import { withRetry, type RetryOptions } from './utils/retry.js';
 import { withTimeout, withTimeoutAndSignal, TimeoutError } from './utils/timeout.js';
@@ -97,19 +98,11 @@ export function registerAdvancedCommands(program: Command): void {
                 return;
             }
 
-            // 构建展示用的配置对象（含脱敏）
+            // 构建展示用的配置对象（统一由 secrets 模块脱敏）
             const displayConfig: Record<string, unknown> = {};
             for (const [key, value] of Object.entries(config)) {
-                if (key === 'apiKey' && !options.showSecrets && typeof value === 'string') {
-                    // 安全脱敏：按比例显示首尾，短 key 完全隐藏
-                    if (value.length > 8) {
-                        const visible = Math.min(6, Math.floor(value.length / 3));
-                        displayConfig[key] = value.slice(0, visible) + '…' + value.slice(-Math.min(4, visible));
-                    } else if (value.length > 0) {
-                        displayConfig[key] = '••••'; // 完全隐藏
-                    } else {
-                        displayConfig[key] = '(未设置)';
-                    }
+                if (key === 'apiKey' && !options.showSecrets) {
+                    displayConfig[key] = redactApiKey(value as string);
                 } else {
                     displayConfig[key] = value;
                 }
