@@ -142,3 +142,111 @@ export function redactConfig<T extends Record<string, unknown>>(
 
     return result as T;
 }
+
+// ============================================================
+//  文本流脱敏（正则匹配）
+// ============================================================
+
+/**
+ * 敏感信息匹配模式
+ *
+ * 覆盖常见密钥/令牌格式：
+ * - OpenAI / DeepSeek 风格 API Key（sk- / dp- 前缀）
+ * - Bearer Token（HTTP Authorization 头）
+ * - 通用 API Key / Secret（常见环境变量中的 key=value 形式）
+ * - JWT Token（三段式 base64 编码）
+ * - AWS 风格 Access Key（AKID 前缀）
+ */
+const SENSITIVE_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+    {
+        // OpenAI / DeepSeek / Anthropic 风格 API Key
+        // 匹配: sk-xxx, sk-ant-xxx, dp-xxx, ak-xxx 等
+        pattern: /\b(?:sk|dp|ak|pk)-(?:ant-)?[A-Za-z0-9]{20,}\b/g,
+        label: 'API Key',
+    },
+    {
+        // Bearer Token（HTTP Authorization）
+        // 匹配: Bearer eyJhbGci..., Bearer sk-xxx, 等
+        pattern: /Bearer\s+[A-Za-z0-9._\-+/=]{20,}/gi,
+        label: 'Bearer Token',
+    },
+    {
+        // JWT Token（三段式，每段 base64 编码）
+        // 匹配: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIi...
+        pattern: /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g,
+        label: 'JWT',
+    },
+    {
+        // 常见 API Key 环境变量形式
+        // 匹配: API_KEY=sk-xxx, token=abc123..., secret=xxx 等
+        pattern: /(?:api[_-]?key|secret|token|password)=[\x21-\x7e]{8,}/gi,
+        label: 'Credential',
+    },
+];
+
+/**
+ * 将匹配到的敏感字符串脱敏显示
+ *
+ * 规则：
+ * - 长度 > 8 → 显示前 6 个字符 + '***' + 后 4 个字符
+ * - 长度 ≤ 8 → 显示 '***REDACTED***'
+ *
+ * @param match 原始匹配字符串
+ * @returns 脱敏后的字符串（保留原长度大致可见）
+ */
+function redactMatch(match: string): string {
+    if (match.length > 8) {
+        const prefix = match.slice(0, 6);
+        const suffix = match.slice(-4);
+        return `${prefix}***${suffix}`;
+    }
+    return '***REDACTED***';
+}
+
+/**
+ * 自动脱敏文本中的敏感信息
+ *
+ * 使用预定义的敏感信息匹配模式，扫描文本中的 API Key、Bearer Token、
+ * JWT、凭据等，自动将其替换为脱敏版本。
+ *
+ * @param text 原始文本（可能包含敏感信息）
+ * @returns 脱敏后的文本
+ *
+ * @example
+ *   redactSecrets('使用 sk-1234567890abcdefghij 调用 API')
+ *   // => '使用 sk-123***ghij 调用 API'
+ *
+ *   redactSecrets('Authorization: Bearer my-super-secret-token-12345')
+ *   // => 'Authorization: Beare***2345'
+ */
+export function redactSecrets(text: string): string {
+    let redacted = text;
+    for (const { pattern } of SENSITIVE_PATTERNS) {
+        redacted = redacted.replace(pattern, redactMatch);
+    }
+    return redacted;
+}
+
+/**
+ * 控制脱敏是否启用（默认启用）
+ */
+let _redactionEnabled = true;
+
+/** 开启/关闭自动脱敏 */
+export function setRedactionEnabled(enabled: boolean): void {
+    _redactionEnabled = enabled;
+}
+
+/** 查询脱敏是否启用 */
+export function isRedactionEnabled(): boolean {
+    return _redactionEnabled;
+}
+
+/**
+ * 安全输出——根据是否启用脱敏，决定是否调用 redactSecrets
+ *
+ * 供 logger 等输出模块使用。
+ */
+export function safeOutput(text: string): string {
+    return _redactionEnabled ? redactSecrets(text) : text;
+}

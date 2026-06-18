@@ -1,4 +1,12 @@
-import { redactApiKey, redactConfig, maskSensitiveValue } from '../src/cli/utils/secrets.js';
+import {
+    redactApiKey,
+    redactConfig,
+    maskSensitiveValue,
+    redactSecrets,
+    setRedactionEnabled,
+    isRedactionEnabled,
+    safeOutput,
+} from '../src/cli/utils/secrets.js';
 
 // ────────────────────────────────────────────────
 // 测试工具函数
@@ -279,6 +287,155 @@ test('redactConfig 含所有敏感 key 大小写变体', () => {
     if (result['APISECRET'] === 'e') throw new Error('APISECRET should be redacted');
     if (result.key === 'f') throw new Error('key should be redacted');
     if (result['KEY'] === 'g') throw new Error('KEY should be redacted');
+});
+
+// ────────────────────────────────────────────────
+// redactSecrets 文本流脱敏测试
+// ────────────────────────────────────────────────
+
+console.log('\n🛡️  redactSecrets 文本流脱敏测试');
+
+// --- API Key 格式 ---
+
+test('redactSecrets 脱敏 OpenAI 风格 API Key', () => {
+    const text = '使用 sk-1234567890abcdefghijklmnop 作为 API Key';
+    const result = redactSecrets(text);
+    if (result.includes('sk-1234567890abcdefghijklmnop')) throw new Error('API Key should be redacted');
+    if (!result.includes('***')) throw new Error('should contain ***');
+    if (!result.includes('sk-123') || !result.includes('mnop')) throw new Error('should show prefix+suffix');
+});
+
+test('redactSecrets 脱敏 Anthropic 风格 API Key', () => {
+    const text = 'Authorization: sk-ant-12345678901234567890';
+    const result = redactSecrets(text);
+    if (result.includes('sk-ant-12345678901234567890')) throw new Error('should be redacted');
+});
+
+test('redactSecrets 脱敏 DeepSeek 风格 API Key', () => {
+    const text = 'model with dp-9876543210fedcba9876543210';
+    const result = redactSecrets(text);
+    if (result.includes('dp-9876543210fedcba9876543210')) throw new Error('should be redacted');
+});
+
+test('redactSecrets 脱敏 pk- 前缀 key', () => {
+    const text = 'publishable key: pk-1234567890abcdefghijklmnop';
+    const result = redactSecrets(text);
+    if (result.includes('pk-1234567890abcdefghijklmnop')) throw new Error('should be redacted');
+});
+
+// --- Bearer Token ---
+
+test('redactSecrets 脱敏 Bearer Token', () => {
+    const text = 'Authorization: Bearer my-super-secret-token-12345';
+    const result = redactSecrets(text);
+    if (result.includes('my-super-secret-token-12345')) throw new Error('token should be redacted');
+    if (!result.includes('***')) throw new Error('should contain ***');
+});
+
+test('redactSecrets 脱敏 Bearer token（小写）', () => {
+    const text = 'authorization: bearer abcdefghijklmnopqrstuvwxyz';
+    const result = redactSecrets(text);
+    // Bearer pattern is case-insensitive, but "bearer" with lowercase should match
+    if (result.includes('abcdefghijklmnopqrstuvwxyz')) throw new Error('should be redacted');
+});
+
+// --- JWT Token ---
+
+test('redactSecrets 脱敏 JWT Token', () => {
+    const text = 'token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+    const result = redactSecrets(text);
+    if (result.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9')) throw new Error('JWT header should be redacted');
+    if (!result.includes('***')) throw new Error('should contain ***');
+});
+
+// --- 凭据环境变量 ---
+
+test('redactSecrets 脱敏 API_KEY=value 形式', () => {
+    const text = 'Missing API_KEY=sk-abcdefghijklmnop12345 in config';
+    const result = redactSecrets(text);
+    if (result.includes('sk-abcdefghijklmnop12345')) throw new Error('should be redacted');
+});
+
+test('redactSecrets 脱敏 token=value 形式', () => {
+    const text = 'Using token=supersecrettoken12345 for auth';
+    const result = redactSecrets(text);
+    if (result.includes('supersecrettoken12345')) throw new Error('should be redacted');
+});
+
+test('redactSecrets 脱敏 secret=value 形式', () => {
+    const text = 'export secret=mysecretvalue123456';
+    const result = redactSecrets(text);
+    if (result.includes('mysecretvalue123456')) throw new Error('should be redacted');
+});
+
+test('redactSecrets 脱敏 password=value 形式', () => {
+    const text = 'password=admin123456!@#$%^';
+    const result = redactSecrets(text);
+    if (result.includes('admin123456!@#$%^')) throw new Error('should be redacted');
+});
+
+// --- 多个敏感信息 ---
+
+test('redactSecrets 同时脱敏多个敏感信息', () => {
+    const text = 'Headers: Bearer token12345678901234567890, Key: sk-abcdefgh12345678901234567890';
+    const result = redactSecrets(text);
+    if (result.includes('token12345678901234567890')) throw new Error('token should be redacted');
+    if (result.includes('sk-abcdefgh12345678901234567890')) throw new Error('API key should be redacted');
+});
+
+// --- 边界情况 ---
+
+test('redactSecrets 普通文本不变', () => {
+    const text = '这是一个普通的消息，没有任何敏感信息';
+    const result = redactSecrets(text);
+    assertEq(result, text);
+});
+
+test('redactSecrets 空字符串', () => {
+    assertEq(redactSecrets(''), '');
+});
+
+test('redactSecrets 短 key 不误匹配', () => {
+    const text = '短 token: abc（不应被脱敏）';
+    const result = redactSecrets(text);
+    if (result !== text) throw new Error('short token should not be redacted');
+});
+
+test('redactSecrets 数字不误匹配', () => {
+    const text = 'count: 12345678901234567890';
+    const result = redactSecrets(text);
+    // 纯数字不应匹配 API Key 模式（需要字母+数字混合的 key 模式）
+    if (result !== text) throw new Error('pure digits should not match API key patterns');
+});
+
+// ────────────────────────────────────────────────
+// safeOutput / setRedactionEnabled 测试
+// ────────────────────────────────────────────────
+
+console.log('\n🔧 safeOutput / setRedactionEnabled 测试');
+
+test('safeOutput 默认启用脱敏', () => {
+    setRedactionEnabled(true);
+    const text = 'key: sk-1234567890abcdefghij';
+    const result = safeOutput(text);
+    if (result === text) throw new Error('should be redacted by default');
+});
+
+test('safeOutput 关闭脱敏后原样输出', () => {
+    setRedactionEnabled(false);
+    const text = 'key: sk-1234567890abcdefghij';
+    const result = safeOutput(text);
+    assertEq(result, text);
+    setRedactionEnabled(true); // 恢复默认
+});
+
+test('isRedactionEnabled 状态查询', () => {
+    setRedactionEnabled(true);
+    if (!isRedactionEnabled()) throw new Error('should be true after enable');
+    setRedactionEnabled(false);
+    if (isRedactionEnabled()) throw new Error('should be false after disable');
+    setRedactionEnabled(true); // 恢复
+    if (!isRedactionEnabled()) throw new Error('should be true after re-enable');
 });
 
 // ────────────────────────────────────────────────

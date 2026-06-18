@@ -21,6 +21,7 @@
 import pc from 'picocolors';
 import ora, { type Ora } from 'ora';
 import * as clack from '@clack/prompts';
+import { safeOutput } from './utils/secrets.js';
 
 // ============================================================
 //  内部全局状态
@@ -108,22 +109,22 @@ function resolveVerbose(explicit?: boolean): boolean {
 export const logger = {
     /** 普通信息 */
     info(msg: string): void {
-        console.log(`${_noColor ? '' : 'ℹ '}${msg}`);
+        console.log(`${_noColor ? '' : 'ℹ '}${safeOutput(msg)}`);
     },
 
     /** 成功 */
     success(msg: string): void {
-        console.log(`${_noColor ? '' : '✅ '}${msg}`);
+        console.log(`${_noColor ? '' : '✅ '}${safeOutput(msg)}`);
     },
 
     /** 警告 */
     warn(msg: string): void {
-        console.log(`${_noColor ? '' : '⚠️ '}${msg}`);
+        console.log(`${_noColor ? '' : '⚠️ '}${safeOutput(msg)}`);
     },
 
     /** 错误 */
     error(msg: string): void {
-        console.error(`${_noColor ? '' : '❌ '}${msg}`);
+        console.error(`${_noColor ? '' : '❌ '}${safeOutput(msg)}`);
     },
 
     /**
@@ -147,17 +148,17 @@ export const logger = {
             output = String(msg);
         }
 
-        console.log(`${_noColor ? '' : '🔍 '}${output}`);
+        console.log(`${_noColor ? '' : '🔍 '}${safeOutput(output)}`);
     },
 
     /** 纯输出（无前缀，无换行），用于拼接 */
     write(msg: string): void {
-        process.stdout.write(msg);
+        process.stdout.write(safeOutput(msg));
     },
 
     /** 纯错误输出（无前缀） */
     writeError(msg: string): void {
-        process.stderr.write(msg);
+        process.stderr.write(safeOutput(msg));
     },
 
     /** 输出空行 */
