@@ -49,3 +49,14 @@ CLI交互；
 ## 18. 输出分页模块 (Pagination)
 
 ## 19. 增强型多任务进度条模块 (Progress Bar)
+
+## 20. 交互式调试模式模块 (Interactive Debug)
+
+## 21. 会话管理模块 (Session Management)
+
+## 22. 流式输出处理器 (Stream Handler)
+
+## 23. 工具调用可视化模块 (Tool Call Visualization)
+### 23.1 可视化展示工具调用流程
+
+## 

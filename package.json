@@ -39,6 +39,7 @@
     "test:encrypt:debug": "tsx --inspect-brk tests/encrypt.test.ts",
     "test:all": "tsx tests/run-all.ts",
     "cli:test": "tsx tests/cli-test.ts",
+    "test:alias": "tsx tests/alias.test.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli/index.js",
