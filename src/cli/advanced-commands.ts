@@ -25,6 +25,7 @@ import { renderKVTable } from './utils/table.js';
 import { setupAutocomplete, chatCompleter } from './utils/autocomplete.js';
 import { withRetry, type RetryOptions } from './utils/retry.js';
 import { withTimeout, withTimeoutAndSignal, TimeoutError } from './utils/timeout.js';
+import { profile } from './utils/profile.js';
 
 export function registerAdvancedCommands(program: Command): void {
     // ============================================================
@@ -141,6 +142,7 @@ export function registerAdvancedCommands(program: Command): void {
         .option('--token-limit <number>', 'token 上限（裁剪用）', parseInt)
         .option('--retry <times>', '失败后自动重试次数（默认 0）', parseInt)
         .option('--timeout <ms>', '操作超时时间（毫秒，默认无限制）', parseInt)
+        .option('--profile', '输出性能分析耗时信息')
         .action(async (prompt: string, options: {
             model?: string;
             verbose?: boolean;
@@ -150,35 +152,41 @@ export function registerAdvancedCommands(program: Command): void {
             tokenLimit?: number;
             retry?: number;
             timeout?: number;
+            profile?: boolean;
         }) => {
             try {
                 const config = configManager.get();
                 const model = options.model || config.model;
+                const doProfile = options.profile ?? false;
 
                 // ---- 1. 构建系统提示词 ----
                 const systemPrompt = options.systemPrompt ?? undefined;
 
                 // ---- 2. 读取 stdin 管道 ----
-                const stdinContent = await readFromStdin();
+                const stdinContent = await profile('stdin-read', () => readFromStdin(), doProfile);
 
                 // ---- 3. 加载上下文文件 ----
                 let fileContent = '';
                 if (options.context) {
-                    const paths = Array.isArray(options.context)
+                    const contextPaths = Array.isArray(options.context)
                         ? options.context
                         : [options.context];
 
-                    for (const p of paths) {
-                        try {
-                            const result = loadContextFromFile(p);
-                            fileContent += `\n\n## 文件: ${result.path}\n${result.content}`;
-                            if (result.truncated) {
-                                logger.warn(`文件 ${p} 过大，已截断至 ~1MB`);
+                    fileContent = await profile('file-load', async () => {
+                        let content = '';
+                        for (const p of contextPaths) {
+                            try {
+                                const result = loadContextFromFile(p);
+                                content += `\n\n## 文件: ${result.path}\n${result.content}`;
+                                if (result.truncated) {
+                                    logger.warn(`文件 ${p} 过大，已截断至 ~1MB`);
+                                }
+                            } catch (err) {
+                                logger.warn(`加载文件失败: ${(err as Error).message}`);
                             }
-                        } catch (err) {
-                            logger.warn(`加载文件失败: ${(err as Error).message}`);
                         }
-                    }
+                        return content;
+                    }, doProfile);
                 }
 
                 // ---- 4. 组装完整 prompt ----
@@ -193,6 +201,11 @@ export function registerAdvancedCommands(program: Command): void {
                 // ---- 5. 构建上下文 ----
                 const ctx = new ContextManager(systemPrompt);
                 ctx.addUserMessage(finalPrompt);
+
+                if (doProfile) {
+                    const ctxStats = ctx.getStats();
+                    console.log(`\x1b[36m⏱ [Profile]\x1b[0m context-build: ${ctxStats.estimatedTokens} tokens, ${ctxStats.messageCount} 条消息`);
+                }
 
                 // Verbose 输出诊断信息
                 if (options.verbose) {
@@ -242,22 +255,28 @@ export function registerAdvancedCommands(program: Command): void {
                 };
 
                 let response: string;
-                if (retryTimes > 0) {
-                    const retryOpts: RetryOptions = {
-                        retries: retryTimes,
-                        delay: 1000,
-                        onRetry: (err, attempt, wait) => {
-                            logger.warn(`⚠ 第 ${attempt} 次重试（${wait}ms 后）: ${err.message}`);
-                        },
-                    };
-                    response = await withRetry(executeCall, retryOpts);
-                } else {
-                    response = await executeCall();
-                }
+                // ---- LLM 调用（内嵌 profile） ----
+                const doLLMCall = async (): Promise<string> => {
+                    if (retryTimes > 0) {
+                        const retryOpts: RetryOptions = {
+                            retries: retryTimes,
+                            delay: 1000,
+                            onRetry: (err, attempt, wait) => {
+                                logger.warn(`⚠ 第 ${attempt} 次重试（${wait}ms 后）: ${err.message}`);
+                            },
+                        };
+                        return withRetry(executeCall, retryOpts);
+                    }
+                    return executeCall();
+                };
+
+                response = await profile('llm-call', doLLMCall, doProfile);
 
                 if (options.stream !== false) {
                     // 流式输出
-                    await printStream(streamResponse(response, 15));
+                    await profile('stream-output', () =>
+                        printStream(streamResponse(response, 15)),
+                    doProfile);
                 } else {
                     // 非流式输出
                     console.log(response);
@@ -277,7 +296,8 @@ export function registerAdvancedCommands(program: Command): void {
         .option('-m, --model <model>', '指定模型')
         .option('-s, --system-prompt <text>', '自定义系统提示词')
         .option('--no-stream', '禁用流式输出')
-        .action(async (options: { model?: string; systemPrompt?: string; stream?: boolean }) => {
+        .option('--profile', '输出性能分析耗时信息')
+        .action(async (options: { model?: string; systemPrompt?: string; stream?: boolean; profile?: boolean }) => {
             const { handleError } = await import('./error-handler.js');
 
             try {
@@ -380,14 +400,20 @@ export function registerAdvancedCommands(program: Command): void {
                     // ---- 正常对话 ----
                     ctx.addUserMessage(line);
 
-                    // TODO: 替换为真实 API 调用 + SSE 流式解析
-                    const mockResponse =
-                        `收到: "${line.length > 60 ? line.slice(0, 60) + '…' : line}"\n` +
-                        `当前上下文 ${ctx.length} 条消息，估算 ${ctx.totalTokens} tokens。`;
+                    const doProfile = options.profile ?? false;
+                    const generateResponse = async (): Promise<string> => {
+                        // TODO: 替换为真实 API 调用 + SSE 流式解析
+                        return `收到: "${line.length > 60 ? line.slice(0, 60) + '…' : line}"\n` +
+                            `当前上下文 ${ctx.length} 条消息，估算 ${ctx.totalTokens} tokens。`;
+                    };
+
+                    const mockResponse = await profile('llm-call', generateResponse, doProfile);
 
                     if (options.stream !== false) {
                         console.log('');
-                        await printStream(streamResponse(mockResponse, 15));
+                        await profile('stream-output', () =>
+                            printStream(streamResponse(mockResponse, 15)),
+                        doProfile);
                         console.log('');
                     } else {
                         console.log('');

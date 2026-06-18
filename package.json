@@ -29,6 +29,8 @@
     "test:progress": "tsx tests/progress.test.ts",
     "test:timeout": "tsx tests/timeout.test.ts",
     "test:timeout:debug": "tsx --inspect-brk tests/timeout.test.ts",
+    "test:profile": "tsx tests/profile.test.ts",
+    "test:profile:debug": "tsx --inspect-brk tests/profile.test.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli/index.js",
