@@ -69,7 +69,20 @@ function getConfigPaths() {
 // ============================================================
 //  3. 深合并工具
 // ============================================================
-function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
+/**
+ * 深合并配置对象（非数组）
+ *
+ * 规则：
+ * - source 中的属性会覆盖 target 中的同名属性
+ * - 两者都是普通对象时递归合并
+ * - source 中的 undefined 不会覆盖 target 中的值
+ * - 通过 WeakSet 防止循环引用导致的栈溢出
+ */
+function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>, visited = new WeakSet<object>()): T {
+    // 防止循环引用导致栈溢出
+    if (visited.has(source)) return target;
+    visited.add(source);
+
     const result = { ...target };
     for (const key of Object.keys(source) as (keyof T)[]) {
         const sourceVal = source[key];
@@ -82,7 +95,7 @@ function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>)
             typeof targetVal === 'object' &&
             !Array.isArray(targetVal)
         ) {
-            result[key] = deepMerge(targetVal, sourceVal) as T[keyof T];
+            result[key] = deepMerge(targetVal, sourceVal, visited) as T[keyof T];
         } else if (sourceVal !== undefined) {
             result[key] = sourceVal as T[keyof T];
         }

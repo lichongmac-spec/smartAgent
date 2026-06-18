@@ -17,6 +17,7 @@
 
 import { Listr, type ListrTask } from 'listr2';
 import { getLoggerConfig } from '../logger.js';
+import { isCI } from '../env-check.js';
 
 // ============================================================
 //  类型定义
@@ -110,8 +111,8 @@ export async function runTasks(
         ci,
     } = options;
 
-    // 判断是否使用简化渲染器（直接读取环境变量，避免循环依赖）
-    const isCIEnv = ci ?? (process.env.CI !== undefined && process.env.CI !== 'false' && process.env.CI !== '0');
+    // CI 检测：优先使用显式传入的值，其次使用统一的 isCI()
+    const isCIEnv = ci ?? isCI();
     const logConfig = getLoggerConfig();
     const useSimple = isCIEnv || (logConfig.noColor ?? false);
 
