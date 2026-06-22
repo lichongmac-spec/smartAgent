@@ -29,7 +29,11 @@ coverage/
 
 # Config (contains secrets)
 .agentrc
-.agentrc
+.smartagentrc.local.json
+.smartagentrc.local
 .vscode/tsconfig.schema.json
+
+# SmartAgent user data
+.smartagent/
 
 .workbuddy/
