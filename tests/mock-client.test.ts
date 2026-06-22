@@ -125,6 +125,62 @@ async function main() {
     console.log(`  ❌ 多轮消息: ${(e as Error).message}`);
   }
 
+  // 18. listModels
+  testCount++;
+  try {
+    const models = await client.listModels();
+    assert(Array.isArray(models), '应返回数组');
+    assert(models.length >= 1, '至少一个模型');
+    assert(models.includes('mock-model-v1'), '包含主模型');
+    assert(models.includes('mock-embed-v1'), '包含嵌入模型');
+    passCount++;
+    console.log('  ✅ listModels');
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ listModels: ${(e as Error).message}`);
+  }
+
+  // 19. embed
+  testCount++;
+  try {
+    const vec = await client.embed('测试');
+    assert(Array.isArray(vec), '应返回数组');
+    assert(vec.length === 768, `维度应为 768，实际 ${vec.length}`);
+
+    // 相同文本相同向量
+    const vec2 = await client.embed('测试');
+    assert(
+      vec.every((v, i) => Math.abs(v - vec2[i]) < 1e-6),
+      '相同文本应有相同嵌入',
+    );
+
+    // 不同文本不同向量
+    const vec3 = await client.embed('不同的文本');
+    const isDifferent = vec.some((v, i) => Math.abs(v - vec3[i]) > 1e-6);
+    assert(isDifferent, '不同文本应有不同嵌入');
+
+    passCount++;
+    console.log('  ✅ embed');
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ embed: ${(e as Error).message}`);
+  }
+
+  // 20. chat 带 timeout 选项
+  testCount++;
+  try {
+    const resp = await client.chat(
+      [{ role: 'user', content: '你好' }],
+      { timeout: 30000 },
+    );
+    assertContains(resp.content, '你好');
+    passCount++;
+    console.log('  ✅ chat + timeout 选项');
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ chat + timeout 选项: ${(e as Error).message}`);
+  }
+
   // ============================================================
   //  结果汇总
   // ============================================================

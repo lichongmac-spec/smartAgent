@@ -13,11 +13,14 @@
 import type { ILLMClient, Message, ChatOptions, ChatResponse } from './types.js';
 import { debug, info } from './logger.js';
 
+/** Mock 嵌入向量维度 */
+const MOCK_EMBEDDING_DIM = 768;
+
 /**
  * Mock LLM 客户端
  *
  * 根据用户消息中的关键词返回预设回复，模拟真实 LLM 的行为。
- * 支持延迟模拟和流式输出。
+ * 支持延迟模拟、流式输出、工具调用模拟、嵌入向量生成。
  */
 export class MockLLMClient implements ILLMClient {
   private modelName = 'mock-model-v1';
@@ -28,14 +31,43 @@ export class MockLLMClient implements ILLMClient {
 
   /** @inheritdoc */
   async healthCheck(): Promise<boolean> {
-    return true; // Mock 永远健康 😄
+    return true; // Mock 永远健康
+  }
+
+  /** @inheritdoc */
+  async listModels(): Promise<string[]> {
+    return [this.modelName, 'mock-embed-v1'];
+  }
+
+  /** @inheritdoc */
+  async embed(text: string): Promise<number[]> {
+    // 基于文本内容生成确定性的"伪向量"（用于测试语义搜索流程）
+    const vector = new Array<number>(MOCK_EMBEDDING_DIM);
+    for (let i = 0; i < MOCK_EMBEDDING_DIM; i++) {
+      // 使用简单的哈希确保相同文本产生相同向量
+      let hash = 0;
+      for (const char of text) {
+        hash = ((hash << 5) - hash + char.charCodeAt(0) + i) | 0;
+      }
+      vector[i] = Math.sin(hash * 0.01);
+    }
+    // L2 归一化
+    const norm = Math.sqrt(vector.reduce((sum, v) => sum + v * v, 0));
+    if (norm > 0) {
+      for (let i = 0; i < MOCK_EMBEDDING_DIM; i++) {
+        vector[i] /= norm;
+      }
+    }
+    return vector;
   }
 
   /** @inheritdoc */
   async chat(messages: Message[], options: ChatOptions = {}): Promise<ChatResponse> {
     debug(`📤 Mock 请求: ${messages.length} 条消息`);
 
-    await this.simulateDelay(50);
+    // 支持 timeout 模拟
+    const timeout = options.timeout ?? 60000;
+    await this.simulateDelay(Math.min(50, timeout));
 
     const lastUserMessage = this.getLastUserMessage(messages);
     const content = this.generateResponse(lastUserMessage, options);

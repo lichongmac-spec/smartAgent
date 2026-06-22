@@ -2,7 +2,7 @@
  * index.ts - LLM 客户端层统一入口
  *
  * 使用方式：
- *   import { createLLMClient, MockLLMClient, llmLogger } from './llm/index.js';
+ *   import { createLLMClient, MockLLMClient, TokenCounter, withRetry } from './llm/index.js';
  *   const client = await createLLMClient();  // 异步自动选择
  */
 
@@ -17,6 +17,7 @@ export type {
   ToolCall,
   ToolResult,
   ToolDefinition,
+  RetryConfig,
 } from './types.js';
 
 // 客户端
@@ -42,3 +43,9 @@ export {
   isRetryableError,
   isAuthError,
 } from './errors.js';
+
+// 重试
+export { withRetry, withOptionalRetry, resolveRetryConfig } from './retry.js';
+
+// Token 计数
+export { TokenCounter } from './token-counter.js';

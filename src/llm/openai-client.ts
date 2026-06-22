@@ -19,6 +19,12 @@ import {
   RateLimitError,
   ContentFilterError,
 } from './errors.js';
+import { withOptionalRetry } from './retry.js';
+
+/** 默认超时（毫秒） */
+const DEFAULT_CHAT_TIMEOUT = 60000;
+const DEFAULT_STREAM_TIMEOUT = 120000;
+const DEFAULT_EMBED_TIMEOUT = 30000;
 
 // ============================================================
 //  工具函数
@@ -65,13 +71,11 @@ function handleHttpError(status: number, errorText: string, apiName: string): ne
     case 429:
       throw new RateLimitError(`${apiName} 请求过于频繁，请稍后重试`);
     case 400:
-      // 内容过滤
       if (errorText.toLowerCase().includes('content') || errorText.toLowerCase().includes('safety')) {
         throw new ContentFilterError(`${apiName} 内容被安全策略拦截`);
       }
       throw new LLMError(`${apiName} 请求错误 (${status}): ${errorText}`, 'BAD_REQUEST', false);
     default:
-      // 5xx 可重试
       throw new LLMError(
         `${apiName} 服务器错误 (${status}): ${errorText}`,
         'API_ERROR',
@@ -97,7 +101,7 @@ export class OpenAIClient implements ILLMClient {
     this.baseUrl = config.baseUrl ?? 'https://api.openai.com/v1';
     this.model = config.model ?? 'gpt-4o-mini';
     const displayKey = this.apiKey.slice(0, 7) + '...';
-    info(`🟢 OpenAI 客户端初始化: ${this.model}, key=${displayKey}`);
+    info(`🟢 ${this.apiName} 客户端初始化: ${this.model}, key=${displayKey}`);
   }
 
   /** 获取 API 名称（用于错误消息） */
@@ -119,8 +123,168 @@ export class OpenAIClient implements ILLMClient {
   }
 
   /** @inheritdoc */
+  async listModels(): Promise<string[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) return [];
+      const data = (await response.json()) as { data?: Array<{ id: string }> };
+      return (data.data ?? []).map((m) => m.id).sort();
+    } catch {
+      return [];
+    }
+  }
+
+  /** @inheritdoc */
+  async embed(text: string): Promise<number[]> {
+    debug(`📤 ${this.apiName} embed 请求: ${text.slice(0, 50)}...`);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/embeddings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'text-embedding-ada-002',
+          input: text,
+        }),
+        signal: AbortSignal.timeout(DEFAULT_EMBED_TIMEOUT),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        handleHttpError(response.status, errorText, this.apiName);
+      }
+
+      const data = (await response.json()) as { data?: Array<{ embedding: number[] }> };
+      return data.data?.[0]?.embedding ?? [];
+    } catch (err) {
+      if (err instanceof LLMError) throw err;
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new NetworkError(`${this.apiName} embed 请求超时`);
+      }
+      throw new LLMError(
+        `${this.apiName} embed 失败: ${(err as Error).message}`,
+        'EMBED_ERROR',
+        true,
+      );
+    }
+  }
+
+  /** @inheritdoc */
   async chat(messages: Message[], options: ChatOptions = {}): Promise<ChatResponse> {
+    return withOptionalRetry(
+      () => this._chatImpl(messages, options),
+      options.retry,
+    );
+  }
+
+  /**
+   * 流式聊天 —— 逐字返回（SSE 格式）
+   *
+   * 注意：流式模式不支持重试
+   */
+  async *chatStream(messages: Message[], options: ChatOptions = {}): AsyncGenerator<string> {
     const model = options.model ?? this.model;
+    const timeout = options.timeout ?? DEFAULT_STREAM_TIMEOUT;
+    debug(`📤 ${this.apiName} 流式请求: ${model}`);
+
+    const body: Record<string, unknown> = {
+      model,
+      messages: buildOpenAIMessages(messages, options.systemPrompt),
+      temperature: options.temperature ?? 0.7,
+      stream: true,
+      stream_options: { include_usage: true },
+    };
+
+    if (options.maxTokens) {
+      body.max_tokens = options.maxTokens;
+    }
+
+    // 工具支持
+    if (options.tools && options.tools.length > 0) {
+      body.tools = options.tools;
+      body.tool_choice = 'auto';
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeout),
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new NetworkError(`${this.apiName} 流式请求超时 (${timeout}ms)`);
+      }
+      throw new LLMError(
+        `${this.apiName} 流式连接失败: ${(err as Error).message}`,
+        'STREAM_CONNECTION_ERROR',
+        true,
+      );
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      handleHttpError(response.status, errorText, this.apiName);
+    }
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+
+    try {
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+          const data = trimmed.slice(6);
+          if (data === '[DONE]') return;
+
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta?.content) {
+              yield delta.content;
+            }
+          } catch {
+            // 跳过无法解析的行
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  // ============================================================
+  //  内部实现
+  // ============================================================
+
+  /**
+   * chat 的内部实现（不含重试逻辑）
+   */
+  private async _chatImpl(messages: Message[], options: ChatOptions): Promise<ChatResponse> {
+    const model = options.model ?? this.model;
+    const timeout = options.timeout ?? DEFAULT_CHAT_TIMEOUT;
 
     debug(`📤 ${this.apiName} 请求: ${model}, ${messages.length} 条消息`);
 
@@ -149,12 +313,12 @@ export class OpenAIClient implements ILLMClient {
           Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(timeout),
       });
     } catch (err) {
       logError(`${this.apiName} 网络请求失败: ${err}`);
       if (err instanceof Error && err.name === 'TimeoutError') {
-        throw new NetworkError(`${this.apiName} 请求超时`);
+        throw new NetworkError(`${this.apiName} 请求超时 (${timeout}ms)`);
       }
       throw new LLMError(
         `${this.apiName} 连接失败: ${(err as Error).message}`,
@@ -209,89 +373,6 @@ export class OpenAIClient implements ILLMClient {
         : undefined,
       model: data.model as string,
     };
-  }
-
-  /**
-   * 流式聊天 —— 逐字返回（SSE 格式）
-   */
-  async *chatStream(messages: Message[], options: ChatOptions = {}): AsyncGenerator<string> {
-    const model = options.model ?? this.model;
-    debug(`📤 ${this.apiName} 流式请求: ${model}`);
-
-    const body: Record<string, unknown> = {
-      model,
-      messages: buildOpenAIMessages(messages, options.systemPrompt),
-      temperature: options.temperature ?? 0.7,
-      stream: true,
-      stream_options: { include_usage: true },
-    };
-
-    if (options.maxTokens) {
-      body.max_tokens = options.maxTokens;
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(120000), // 流式超时更长
-      });
-    } catch (err) {
-      if (err instanceof Error && err.name === 'TimeoutError') {
-        throw new NetworkError(`${this.apiName} 流式请求超时`);
-      }
-      throw new LLMError(
-        `${this.apiName} 流式连接失败: ${(err as Error).message}`,
-        'STREAM_CONNECTION_ERROR',
-        true,
-      );
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      handleHttpError(response.status, errorText, this.apiName);
-    }
-
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-
-    try {
-      let buffer = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-          const data = trimmed.slice(6); // 去掉 "data: " 前缀
-          if (data === '[DONE]') return;
-
-          try {
-            const parsed = JSON.parse(data);
-            const delta = parsed.choices?.[0]?.delta;
-            if (delta?.content) {
-              yield delta.content;
-            }
-          } catch {
-            // 跳过无法解析的行
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
   }
 }
 

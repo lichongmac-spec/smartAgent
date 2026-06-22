@@ -210,11 +210,72 @@ async function main() {
     assert(typeof client.chat === 'function', 'chat 方法');
     assert(typeof client.chatStream === 'function', 'chatStream 方法');
     assert(typeof client.healthCheck === 'function', 'healthCheck 方法');
+    assert(typeof client.listModels === 'function', 'listModels 方法');
+    assert(typeof client.embed === 'function', 'embed 方法');
     passCount++;
     console.log('  ✅ MockLLMClient ILLMClient 接口合规');
   } catch (e) {
     failCount++;
     console.log(`  ❌ MockLLMClient ILLMClient 接口合规: ${(e as Error).message}`);
+  }
+
+  // ============================================================
+  //  MockLLMClient - listModels
+  // ============================================================
+
+  testCount++;
+  try {
+    const client = new MockLLMClient();
+    const models = await client.listModels();
+    assert(Array.isArray(models), '应返回数组');
+    assert(models.length > 0, '应至少有一个模型');
+    assert(models.includes('mock-model-v1'), '应包含 mock-model-v1');
+    passCount++;
+    console.log('  ✅ MockLLMClient listModels');
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ MockLLMClient listModels: ${(e as Error).message}`);
+  }
+
+  // ============================================================
+  //  MockLLMClient - embed
+  // ============================================================
+
+  testCount++;
+  try {
+    const client = new MockLLMClient();
+    const vec = await client.embed('你好世界');
+    assert(Array.isArray(vec), '应返回数组');
+    assert(vec.length === 768, `嵌入维度应为 768，实际 ${vec.length}`);
+
+    // 相同文本产生相同向量
+    const vec2 = await client.embed('你好世界');
+    assert(vec.every((v, i) => Math.abs(v - vec2[i]) < 1e-6), '相同文本应有相同嵌入');
+
+    passCount++;
+    console.log('  ✅ MockLLMClient embed');
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ MockLLMClient embed: ${(e as Error).message}`);
+  }
+
+  // ============================================================
+  //  MockLLMClient - chat 带 timeout
+  // ============================================================
+
+  testCount++;
+  try {
+    const client = new MockLLMClient();
+    const resp = await client.chat(
+      [{ role: 'user', content: '你好' }],
+      { timeout: 5000 },
+    );
+    assertContains(resp.content, '你好');
+    passCount++;
+    console.log('  ✅ MockLLMClient chat + timeout');
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ MockLLMClient chat + timeout: ${(e as Error).message}`);
   }
 
   // ============================================================

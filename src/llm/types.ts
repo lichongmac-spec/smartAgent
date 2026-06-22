@@ -109,6 +109,21 @@ export interface ChatResponse {
 // ============================================================
 
 /**
+ * 重试配置
+ *
+ * 理解：就像你告诉服务员"如果 5 分钟还没上菜，再来提醒我"
+ * 网络抖动或临时故障时自动重试
+ */
+export interface RetryConfig {
+  /** 最大重试次数，默认 2 */
+  maxRetries?: number;
+  /** 初始延迟（毫秒），默认 1000ms，每次重试翻倍 */
+  initialDelay?: number;
+  /** 自定义判断是否应该重试，默认只重试网络/超时错误 */
+  shouldRetry?: (error: Error) => boolean;
+}
+
+/**
  * 调用 AI 时的可选参数
  *
  * 理解：就像你点菜时说"微辣"、"不要香菜"
@@ -122,8 +137,21 @@ export interface ChatOptions {
   model?: string;
   /** 系统提示词：给 AI 设定"人设" */
   systemPrompt?: string;
-  /** 可用工具定义（JSON Schema 格式） */
+  /** 可用工具定义（JSON Schema 格式），用于 Function Calling */
   tools?: ToolDefinition[];
+  /**
+   * 单次请求超时（毫秒），默认 60000
+   *
+   * 理解：简单问答可以设短一点（10s），复杂推理设长一点（120s）
+   */
+  timeout?: number;
+  /**
+   * 重试配置
+   *  - true: 使用默认重试（maxRetries=2, initialDelay=1000ms）
+   *  - RetryConfig: 自定义重试
+   *  - undefined/void: 不重试（默认）
+   */
+  retry?: RetryConfig | boolean;
 }
 
 /**
@@ -174,4 +202,23 @@ export interface ILLMClient {
    * 理解：就像你打电话给餐厅，确认他们今天营业
    */
   healthCheck(): Promise<boolean>;
+
+  /**
+   * 获取可用模型列表
+   *
+   * 理解：就像问餐厅"今天有哪些招牌菜？"
+   * Agent 需要知道当前可调用哪些模型
+   */
+  listModels(): Promise<string[]>;
+
+  /**
+   * 生成文本嵌入向量
+   *
+   * 理解：把一段文字转成数字向量，用于语义搜索、相似度计算
+   * Agent 的 Memory 系统依赖此功能
+   *
+   * @param text - 要嵌入的文本
+   * @returns 嵌入向量（浮点数数组，通常 768 或 1536 维）
+   */
+  embed(text: string): Promise<number[]>;
 }
