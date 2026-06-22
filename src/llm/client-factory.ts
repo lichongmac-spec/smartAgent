@@ -30,6 +30,16 @@ import { MockLLMClient } from './mock-client.js';
 import type { ILLMClient } from './types.js';
 import { info, debug, warn } from './logger.js';
 
+// 懒加载 configManager（避免模块初始化时的循环依赖）
+let _configManager: typeof import('../cli/config-manager.js').configManager | null = null;
+async function _getConfigManager() {
+  if (!_configManager) {
+    const mod = await import('../cli/config-manager.js');
+    _configManager = mod.configManager;
+  }
+  return _configManager;
+}
+
 // ============================================================
 //  类型定义
 // ============================================================
@@ -47,6 +57,8 @@ export interface LLMClientConfig {
   model?: string;
   /** API Base URL（OpenAI 兼容时用） */
   baseUrl?: string;
+  /** Ollama 服务地址 */
+  host?: string;
   /** 初始化时是否进行健康检查，默认 false */
   healthCheck?: boolean;
 }
@@ -198,6 +210,99 @@ export function createLLMClientSync(config: LLMClientConfig = {}): ILLMClient {
 }
 
 // ============================================================
+//  从配置管理器创建客户端（工程配置驱动）
+// ============================================================
+
+/**
+ * 从配置管理器创建 LLM 客户端
+ *
+ * 配置优先级：overrides > 环境变量 > 本地配置 > 项目配置 > 全局配置 > 默认
+ *
+ * 理解：这是"生产级"的客户端创建方式，所有配置由 ConfigManager 统一管理。
+ * API Key 不会出现在代码中，也不会提交到 Git。
+ *
+ * @param overrides - 可选覆盖配置（优先级最高，用于测试或临时切换）
+ * @returns 一个可用的 LLM 客户端实例
+ *
+ * @example
+ *   // 使用默认配置（从配置文件/环境变量读取）
+ *   const client = await createLLMClientFromConfig();
+ *
+ *   // 临时覆盖 provider
+ *   const client = await createLLMClientFromConfig({ provider: 'deepseek' });
+ */
+export async function createLLMClientFromConfig(
+  overrides?: Partial<LLMClientConfig>,
+): Promise<ILLMClient> {
+  const configMgr = await _getConfigManager();
+  const cfg = configMgr.get();
+
+  const provider = (overrides?.provider ?? cfg.provider ?? 'ollama') as ProviderType;
+
+  // 构建最终配置：配置管理器值 + overrides 覆盖
+  const apiKey = overrides?.apiKey ?? cfg.apiKey ?? undefined;
+  const model = overrides?.model ?? cfg.model ?? undefined;
+  const baseUrl = overrides?.baseUrl ?? cfg.baseUrl ?? undefined;
+
+  // 针对不同 Provider 选择对应的模型/主机
+  let finalModel = model;
+  let finalHost: string | undefined;
+
+  switch (provider) {
+    case 'ollama':
+      finalModel = finalModel ?? cfg.ollamaModel ?? 'qwen2.5:7b';
+      finalHost = cfg.ollamaHost ?? 'http://localhost:11434';
+      break;
+    case 'deepseek':
+      finalModel = finalModel ?? 'deepseek-chat';
+      break;
+    case 'openai':
+      finalModel = finalModel ?? 'gpt-4o-mini';
+      break;
+    case 'mock':
+      finalModel = finalModel ?? 'mock';
+      break;
+  }
+
+  // API Key 验证
+  if ((provider === 'deepseek' || provider === 'openai') && !apiKey) {
+    throw new Error(
+      `${provider === 'deepseek' ? 'DeepSeek' : 'OpenAI'} 需要 API Key，但未在配置中找到。\n` +
+        '请通过以下方式之一配置:\n' +
+        `  1. 环境变量: AGENT_API_KEY=sk-xxx\n` +
+        '  2. 本地配置: 在 .smartagentrc.local.json 中设置 "apiKey"\n' +
+        '  3. CLI 命令: pnpm cli -- config set apiKey sk-xxx',
+    );
+  }
+
+  const client = _buildClient(provider, {
+    apiKey,
+    model: finalModel,
+    baseUrl: baseUrl ?? undefined,
+    host: finalHost,
+    healthCheck: overrides?.healthCheck,
+  });
+
+  info(`✅ 从配置创建 LLM 客户端: ${provider} (${finalModel})`);
+
+  // 可选健康检查
+  if (overrides?.healthCheck) {
+    try {
+      const healthy = await client.healthCheck();
+      if (!healthy) {
+        warn(`⚠️ ${provider} 健康检查失败，但仍将尝试使用`);
+      } else {
+        debug(`✅ ${provider} 健康检查通过`);
+      }
+    } catch (err) {
+      warn(`⚠️ ${provider} 健康检查异常: ${err}`);
+    }
+  }
+
+  return client;
+}
+
+// ============================================================
 //  内部实现
 // ============================================================
 
@@ -232,7 +337,7 @@ function _buildClient(provider: ProviderType, config: LLMClientConfig): ILLMClie
     case 'ollama':
       return new OllamaClient({
         model: config.model ?? process.env.OLLAMA_MODEL ?? 'qwen2.5:7b',
-        host: process.env.OLLAMA_HOST,
+        host: config.host ?? process.env.OLLAMA_HOST,
       });
 
     case 'mock':

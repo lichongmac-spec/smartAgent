@@ -26,7 +26,13 @@ export { OllamaClient } from './ollama-client.js';
 export { OpenAIClient, DeepSeekClient } from './openai-client.js';
 
 // 工厂
-export { createLLMClient, createLLMClientSync, detectProvider, detectProviderAsync } from './client-factory.js';
+export {
+  createLLMClient,
+  createLLMClientSync,
+  createLLMClientFromConfig,
+  detectProvider,
+  detectProviderAsync,
+} from './client-factory.js';
 export type { LLMClientConfig, ProviderType } from './client-factory.js';
 
 // 日志

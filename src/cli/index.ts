@@ -29,6 +29,24 @@ configureLogger({
 // 应用配置文件 / 环境变量中的 verbose 设置
 setVerbose(configManager.get().verbose ?? false);
 
+// ============ 1.6 启动时配置验证 ============
+// 检查 API Key 是否匹配当前 Provider
+const startupConfig = configManager.get();
+if (startupConfig.provider === 'deepseek' || startupConfig.provider === 'openai') {
+  if (!startupConfig.apiKey) {
+    const providerName = startupConfig.provider === 'deepseek' ? 'DeepSeek' : 'OpenAI';
+    console.warn(`\n⚠️  警告: 已选择 Provider '${providerName}' 但未配置 API Key`);
+    console.warn('');
+    console.warn('请通过以下方式之一配置:');
+    console.warn(`  1. 环境变量: AGENT_API_KEY=sk-xxx`);
+    console.warn('  2. 本地配置: 在 .smartagentrc.local.json 中设置 "apiKey"');
+    console.warn('  3. CLI 命令: pnpm cli -- config set apiKey sk-xxx');
+    console.warn('');
+    console.warn('当前将自动降级到 Ollama 本地模式。\n');
+    configManager.set('provider', 'ollama' as any);
+  }
+}
+
 // ============ 2. 优雅退出 ============
 setupGracefulShutdown({
     verbose: true,
