@@ -13,7 +13,7 @@
  *   setVerbose(true);
  *
  *   // 输出调试信息
- *   debug('开始处理请求', { model: 'deepseek-chat', prompt: 'hello' });
+ *   debug('开始处理请求', { model: 'deepseek-v4-flash', prompt: 'hello' });
  *
  *   // 检查当前状态
  *   if (isVerbose()) { ... }

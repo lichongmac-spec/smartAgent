@@ -395,9 +395,9 @@ export class DeepSeekClient extends OpenAIClient {
     super({
       apiKey: config.apiKey,
       baseUrl: 'https://api.deepseek.com/v1',
-      model: config.model ?? 'deepseek-chat',
+      model: config.model ?? 'deepseek-v4-flash',
     });
     const displayKey = config.apiKey.slice(0, 7) + '...';
-    info(`🔵 DeepSeek 客户端初始化: ${config.model ?? 'deepseek-chat'}, key=${displayKey}`);
+    info(`🔵 DeepSeek 客户端初始化: ${config.model ?? 'deepseek-v4-flash'}, key=${displayKey}`);
   }
 }

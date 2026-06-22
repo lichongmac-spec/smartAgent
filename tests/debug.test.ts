@@ -12,12 +12,12 @@
  *   7. 边界：空参数、null/undefined、循环引用对象
  */
 
-import {
-    setVerbose,
-    isVerbose,
-    debug,
-} from '../src/cli/utils/debug.js';
 import { getLoggerConfig } from '../src/cli/logger.js';
+import {
+    debug,
+    isVerbose,
+    setVerbose,
+} from '../src/cli/utils/debug.js';
 
 // ============================================================
 //  测试辅助
@@ -154,16 +154,16 @@ test('debug 单参数 number（verbose=true）', () => {
 test('debug 多参数合并输出', () => {
     setVerbose(true);
     const { stdout } = captureConsole(() => {
-        debug('模型:', 'deepseek-chat', 'tokens:', 4096);
+        debug('模型:', 'deepseek-v4-flash', 'tokens:', 4096);
     });
     assert(stdout.length > 0, '应有输出');
-    assert(stdout.some(line => line.includes('deepseek-chat') && line.includes('4096')), '输出应包含所有参数');
+    assert(stdout.some(line => line.includes('deepseek-v4-flash') && line.includes('4096')), '输出应包含所有参数');
 });
 
 test('debug 混合类型多参数', () => {
     setVerbose(true);
     const { stdout } = captureConsole(() => {
-        debug('配置:', { model: 'deepseek-chat', maxTokens: 4096 });
+        debug('配置:', { model: 'deepseek-v4-flash', maxTokens: 4096 });
     });
     assert(stdout.length > 0, '应有输出');
     // 对象应该被序列化为 JSON

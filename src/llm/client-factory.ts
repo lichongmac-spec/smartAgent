@@ -254,7 +254,7 @@ export async function createLLMClientFromConfig(
       finalHost = cfg.ollamaHost ?? 'http://localhost:11434';
       break;
     case 'deepseek':
-      finalModel = finalModel ?? 'deepseek-chat';
+      finalModel = finalModel ?? 'deepseek-v4-flash';
       break;
     case 'openai':
       finalModel = finalModel ?? 'gpt-4o-mini';
@@ -318,7 +318,7 @@ function _buildClient(provider: ProviderType, config: LLMClientConfig): ILLMClie
       }
       return new DeepSeekClient({
         apiKey,
-        model: config.model ?? 'deepseek-chat',
+        model: config.model ?? 'deepseek-v4-flash',
       });
     }
 

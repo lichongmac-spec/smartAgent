@@ -44,7 +44,7 @@ const ConfigSchema = z.object({
 
   // ===== 模型 =====
   /** 模型名称 */
-  model: z.string().default('deepseek-chat'),
+  model: z.string().default('deepseek-v4-flash'),
 
   // ===== 参数 =====
   /** 最大输出 Token */
@@ -153,7 +153,7 @@ export class ConfigManager {
     // Step 1: 默认配置
     let raw: any = {
       provider: 'ollama',
-      model: 'deepseek-chat',
+      model: 'deepseek-v4-flash',
       maxTokens: 4096,
       verbose: false,
       timeout: 30000,

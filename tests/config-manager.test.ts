@@ -12,7 +12,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { encrypt, decrypt, isEncrypted } from '../src/cli/utils/encrypt.js';
+import { encrypt, isEncrypted } from '../src/cli/utils/encrypt.js';
 
 // ============================================================
 //  测试辅助
@@ -165,7 +165,7 @@ async function run() {
             const mgr = new ConfigManager();
             const config = mgr.get();
 
-            assertEqual(config.model, 'deepseek-chat', 'model');
+            assertEqual(config.model, 'deepseek-v4-flash', 'model');
             assertEqual(config.maxTokens, 4096, 'maxTokens');
             assertEqual(config.verbose, false, 'verbose');
             assertEqual(config.timeout, 30000, 'timeout');
@@ -185,7 +185,7 @@ async function run() {
             const { ConfigManager } = await import('../src/cli/config-manager.js');
             const mgr = new ConfigManager();
 
-            assertEqual(mgr.getValue('model'), 'deepseek-chat', 'model');
+            assertEqual(mgr.getValue('model'), 'deepseek-v4-flash', 'model');
             assertEqual(mgr.getValue('maxTokens'), 4096, 'maxTokens');
         } finally {
             cleanupTempDir(dir, env);
@@ -199,7 +199,7 @@ async function run() {
             const mgr = new ConfigManager();
 
             assertEqual(mgr.getValue('apiKey', 'fallback-key'), 'fallback-key', '回退默认值');
-            assertEqual(mgr.getValue('model', 'deepseek-chat'), 'deepseek-chat', '不覆盖已有值');
+            assertEqual(mgr.getValue('model', 'deepseek-v4-flash'), 'deepseek-v4-flash', '不覆盖已有值');
         } finally {
             cleanupTempDir(dir, env);
         }
@@ -257,7 +257,7 @@ async function run() {
         try {
             writeFileSync(join(dir, '.smartagentrc'), JSON.stringify({
                 apiKey: 'sk-file',
-                model: 'deepseek-chat',
+                model: 'deepseek-v4-flash',
                 timeout: 10000,
             }));
 
@@ -379,7 +379,7 @@ async function run() {
             const config = mgr.reset();
 
             assertEqual(config.apiKey, undefined, 'apiKey 恢复未设置');
-            assertEqual(config.model, 'deepseek-chat', 'model 恢复默认');
+            assertEqual(config.model, 'deepseek-v4-flash', 'model 恢复默认');
             assertEqual(config.verbose, false, 'verbose 恢复默认');
             assertEqual(config.maxTokens, 4096, 'maxTokens 恢复默认');
         } finally {
@@ -446,7 +446,7 @@ async function run() {
             const { configManager } = await import('../src/cli/config-manager.js');
             const config = configManager.get();
 
-            assertEqual(config.model, 'deepseek-chat');
+            assertEqual(config.model, 'deepseek-v4-flash');
             assertOk(typeof config.maxTokens === 'number');
         } finally {
             cleanupTempDir(dir, env);

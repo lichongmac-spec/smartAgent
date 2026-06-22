@@ -6,14 +6,14 @@
  * 运行: node tests/test.ts --only unit
  */
 
-import { OpenAIClient, DeepSeekClient } from '../src/llm/openai-client.js';
-import type { ILLMClient } from '../src/llm/types.js';
 import {
   AuthenticationError,
-  RateLimitError,
   ContentFilterError,
   isAuthError,
+  RateLimitError,
 } from '../src/llm/errors.js';
+import { DeepSeekClient, OpenAIClient } from '../src/llm/openai-client.js';
+import type { ILLMClient } from '../src/llm/types.js';
 
 let passCount = 0;
 let failCount = 0;
@@ -110,7 +110,7 @@ async function main() {
   try {
     const client = new DeepSeekClient({
       apiKey: 'sk-test-key-67890',
-      model: 'deepseek-chat',
+      model: 'deepseek-v4-flash',
     });
     assert(client !== null, 'DeepSeekClient 实例化');
     assert(client instanceof OpenAIClient, '应继承自 OpenAIClient');

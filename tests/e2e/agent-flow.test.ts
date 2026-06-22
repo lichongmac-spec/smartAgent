@@ -11,7 +11,7 @@
  */
 
 import { spawnSync } from 'child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
@@ -95,11 +95,11 @@ test('完整流程: config set → get → list', () => {
 });
 
 test('config set model → get model', () => {
-    const r1 = runCli(['config', 'set', 'model', 'deepseek-chat']);
+    const r1 = runCli(['config', 'set', 'model', 'deepseek-v4-flash']);
     assert(r1.code === 0, 'config set model 成功');
 
     const r2 = runCli(['config', 'get', 'model']);
-    assertIncludes(r2.stdout, 'deepseek-chat', 'model 正确');
+    assertIncludes(r2.stdout, 'deepseek-v4-flash', 'model 正确');
 });
 
 // ---- ask 命令 ----
@@ -137,7 +137,7 @@ test('chat 非交互模式提示', () => {
 console.log('\n📦 session 命令');
 
 test('session create → list → delete 完整流程', () => {
-    const r1 = runCli(['session', 'create', '我的对话', '--model', 'deepseek-chat']);
+    const r1 = runCli(['session', 'create', '我的对话', '--model', 'deepseek-v4-flash']);
     assert(r1.code === 0, 'session create 成功');
 
     const r2 = runCli(['session', 'list']);

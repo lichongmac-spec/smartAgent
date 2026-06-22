@@ -205,7 +205,7 @@ if (isMainModule) {
 
     renderTable(
         [
-            ['deepseek-chat', 'DeepSeek', '2024-12', '64K', '¥0.001'],
+            ['deepseek-v4-flash', 'DeepSeek', '2026-06', '64K', '¥0.001'],
             ['gpt-4', 'OpenAI', '2023-03', '128K', '¥0.03'],
             ['claude-3-opus', 'Anthropic', '2024-03', '200K', '¥0.015'],
         ],
@@ -216,7 +216,7 @@ if (isMainModule) {
 
     renderKVTable(
         {
-            model: 'deepseek-chat',
+            model: 'deepseek-v4-flash',
             temperature: 0.7,
             maxTokens: 8192,
             stream: true,

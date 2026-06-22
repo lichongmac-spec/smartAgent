@@ -12,7 +12,7 @@
  * 必须用动态 import 确保环境变量在模块初始化前生效（ESM 静态导入会被提升）。
  */
 
-import { mkdtempSync, rmSync, readdirSync, existsSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -91,7 +91,7 @@ cleanSessions();
 test('创建会话 — create() 返回有效 ID', () => {
     cleanSessions();
     const mgr = new SessionManager();
-    const id = mgr.create('测试会话', 'deepseek-chat');
+    const id = mgr.create('测试会话', 'deepseek-v4-flash');
     assert(typeof id === 'string', '会话 ID 应为字符串');
     assert(id.length > 0, '会话 ID 不应为空');
 });

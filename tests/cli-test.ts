@@ -216,12 +216,12 @@ function run() {
 
     test('config set model', () => {
         resetConfig({});
-        const { stdout, exitCode } = runCli(['config', 'set', 'model', 'deepseek-chat']);
+        const { stdout, exitCode } = runCli(['config', 'set', 'model', 'deepseek-v4-flash']);
         assertEqual(exitCode, 0, 'exit code');
 
         const raw = readFileSync(join(testDir, '.smartagentrc'), 'utf-8');
         const parsed = JSON.parse(raw);
-        assertEqual(parsed.model, 'deepseek-chat', 'model 明文存储');
+        assertEqual(parsed.model, 'deepseek-v4-flash', 'model 明文存储');
     });
 
     test('config set --global 写入全局配置', () => {
@@ -282,7 +282,7 @@ function run() {
     console.log('\n📦 config list');
 
     test('config list 表格输出（apiKey 脱敏）', () => {
-        resetConfig({ apiKey: 'sk-secret-e2e-verylong', model: 'deepseek-chat' });
+        resetConfig({ apiKey: 'sk-secret-e2e-verylong', model: 'deepseek-v4-flash' });
         const { stdout, exitCode } = runCli(['config', 'list']);
         assertEqual(exitCode, 0, 'exit code');
         assertIncludes(stdout, 'apiKey', '表格含 apiKey');
@@ -485,7 +485,7 @@ function run() {
     test('session create 创建会话', () => {
         resetConfig({});
         const { stdout, exitCode } = runCli([
-            'session', 'create', '我的对话', '--model', 'deepseek-chat',
+            'session', 'create', '我的对话', '--model', 'deepseek-v4-flash',
         ]);
         assertEqual(exitCode, 0, 'exit code');
         assertIncludes(stdout, '会话', '创建成功提示含"会话"');
