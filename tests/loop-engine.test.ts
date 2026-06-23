@@ -14,10 +14,13 @@ import { MockLLMClient } from '../src/llm/mock-client.js';
 import { ToolRegistry } from '../src/tools/registry.js';
 import { createDefaultToolRegistry } from '../src/tools/builtin/index.js';
 import { LoopEngine } from '../src/core/loop-engine.js';
-import { readFileSync, writeFileSync, unlinkSync } from 'fs';
-import { tmpdir } from 'os';
+import { readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { LoopState } from '../src/core/types.js';
+
+// 测试用临时文件目录（必须在项目内，受沙箱保护）
+const TEST_TMP = join(process.cwd(), 'test-output');
+mkdirSync(TEST_TMP, { recursive: true });
 
 // ============================================================
 //  自建测试框架
@@ -280,7 +283,7 @@ await describe('内置工具', async () => {
 
   await testAsync('read_file - 读取文件', async () => {
     const registry = createDefaultToolRegistry(false);
-    const testPath = join(tmpdir(), `loop-test-read-${Date.now()}.txt`);
+    const testPath = join(TEST_TMP, `loop-test-read-${Date.now()}.txt`);
     writeFileSync(testPath, 'Hello Loop Engine!', 'utf-8');
 
     try {
@@ -294,14 +297,15 @@ await describe('内置工具', async () => {
 
   await testAsync('read_file - 不存在的文件', async () => {
     const registry = createDefaultToolRegistry(false);
-    const result = await registry.execute('read_file', { path: '/nonexistent/path/file.txt' }) as any;
+    // 使用项目内的路径（满足沙箱要求），但文件不存在
+    const result = await registry.execute('read_file', { path: 'test-output/__nonexistent_test_file__.txt' }) as any;
     assertOk(!result.success, '应失败');
     assertOk(result.error.length > 0, '应有错误信息');
   });
 
   await testAsync('read_file - 行范围', async () => {
     const registry = createDefaultToolRegistry(false);
-    const testPath = join(tmpdir(), `loop-test-lines-${Date.now()}.txt`);
+    const testPath = join(TEST_TMP, `loop-test-lines-${Date.now()}.txt`);
     writeFileSync(testPath, 'line1\nline2\nline3\nline4\nline5', 'utf-8');
 
     try {
@@ -322,7 +326,7 @@ await describe('内置工具', async () => {
 
   await testAsync('write_file - 覆盖写入', async () => {
     const registry = createDefaultToolRegistry(false);
-    const testPath = join(tmpdir(), `loop-test-write-${Date.now()}.txt`);
+    const testPath = join(TEST_TMP, `loop-test-write-${Date.now()}.txt`);
 
     try {
       const result = await registry.execute('write_file', {
@@ -340,7 +344,7 @@ await describe('内置工具', async () => {
 
   await testAsync('write_file - 追加模式', async () => {
     const registry = createDefaultToolRegistry(false);
-    const testPath = join(tmpdir(), `loop-test-append-${Date.now()}.txt`);
+    const testPath = join(TEST_TMP, `loop-test-append-${Date.now()}.txt`);
 
     try {
       await registry.execute('write_file', {

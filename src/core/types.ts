@@ -8,6 +8,7 @@
  */
 
 import type { ToolCall } from '../llm/types.js';
+import type { ContextManager } from '../context/context-manager.js';
 
 // ============================================================
 //  1. Loop 引擎状态
@@ -78,6 +79,8 @@ export interface LoopConfig {
   verbose?: boolean;
   /** 是否在用户消息前注入历史上下文 */
   injectHistory?: boolean;
+  /** 上下文管理器（可选，用于跨 run() 调用保持对话记忆） */
+  contextManager?: ContextManager;
 }
 
 // ============================================================

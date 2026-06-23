@@ -14,3 +14,5 @@ export {
   calculatorExecutor,
   createDefaultToolRegistry,
 } from './builtin/index.js';
+export { resolveSandboxPath, SANDBOX_ERROR } from './sandbox.js';
+export type { SandboxResult } from './sandbox.js';

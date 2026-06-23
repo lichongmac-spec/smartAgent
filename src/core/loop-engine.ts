@@ -26,6 +26,7 @@
 import type { ILLMClient, Message, ChatResponse, ToolCall } from '../llm/types.js';
 import type { LoopState, LoopConfig, StepCallback, StepRecord } from './types.js';
 import { ToolRegistry } from '../tools/registry.js';
+import type { ContextManager } from '../context/context-manager.js';
 
 // ============================================================
 //  ReAct 系统提示词
@@ -149,7 +150,8 @@ export class LoopEngine {
       systemPrompt: config.systemPrompt ?? '',
       verbose: config.verbose ?? true,
       injectHistory: config.injectHistory ?? false,
-    };
+      contextManager: config.contextManager,
+    } as Required<LoopConfig> & { contextManager?: ContextManager };
 
     this.state = this._createInitialState();
   }
@@ -181,9 +183,27 @@ export class LoopEngine {
     const messages: Message[] = [];
 
     // 系统提示词
-    const toolsDescription = buildToolsDescription(this.tools);
-    const systemPrompt = buildSystemPrompt(toolsDescription, this.config.systemPrompt);
-    messages.push({ role: 'system', content: systemPrompt });
+    // 如果提供了 ContextManager，优先使用它的 toJSON 恢复系统消息
+    const contextManager = this.config.contextManager;
+    if (contextManager && contextManager.length > 0) {
+      // 从 ContextManager 恢复已有上下文（系统消息 + 历史对话）
+      const ctxMessages = contextManager.getMessages();
+      for (const msg of ctxMessages) {
+        messages.push(msg as Message);
+      }
+    } else {
+      const toolsDescription = buildToolsDescription(this.tools);
+      const systemPrompt = buildSystemPrompt(toolsDescription, this.config.systemPrompt);
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+
+    // 如果 ContextManager 中有历史对话，注入到当前会话
+    if (contextManager && contextManager.length > 0 && this.config.injectHistory) {
+      const conversation = contextManager.getConversation();
+      for (const msg of conversation) {
+        messages.push(msg as Message);
+      }
+    }
 
     // 用户输入
     messages.push({ role: 'user', content: userInput });
@@ -315,40 +335,64 @@ export class LoopEngine {
       this.log(`🔧 调用工具: ${toolCall.name}`);
       this.log(`📝 参数: ${toolCall.arguments.slice(0, 200)}`);
 
-      // 执行工具
       let observation: string;
+
+      // 1. 解析参数（与执行分开捕获，提供精确错误信息）
+      let args: Record<string, unknown>;
       try {
-        const args = JSON.parse(toolCall.arguments);
+        args = JSON.parse(toolCall.arguments);
+      } catch (parseError) {
+        observation = `❌ 工具参数格式错误: ${parseError instanceof Error ? parseError.message : String(parseError)}。收到的参数: ${toolCall.arguments.slice(0, 100)}`;
+        this._pushObservation(messages, observation, toolCall, response);
+        continue;
+      }
+
+      // 2. 执行工具
+      try {
         const result = await this.tools.execute(toolCall.name, args);
         observation = JSON.stringify(result, null, 2);
         this.log(`✅ 工具执行成功 (${observation.length} 字符)`);
-      } catch (error) {
-        observation = `❌ 错误: ${error instanceof Error ? error.message : String(error)}`;
+      } catch (execError) {
+        observation = `❌ 工具执行错误: ${execError instanceof Error ? execError.message : String(execError)}`;
         this.log(observation);
       }
 
-      // ---- 观察 (Observe) ----
-      this.log(`👀 观察结果: ${observation.slice(0, 150)}${observation.length > 150 ? '...' : ''}`);
-
-      // 将工具结果加入消息（role='tool'，必须包含 tool_call_id）
-      messages.push({
-        role: 'tool',
-        content: observation,
-        tool_call_id: toolCall.id ?? toolCall.name,
-      });
-
-      // 记录历史
-      this.state.history.push({
-        thought: response.content,
-        action: toolCall,
-        observation,
-        timestamp: new Date(),
-      });
-
-      this._notifyStep();
+      // 3. 观察结果并注入消息
+      this._pushObservation(messages, observation, toolCall, response);
     }
 
     this.state.status = 'thinking';
+  }
+
+  // ============================================================
+  //  工具观察结果处理
+  // ============================================================
+
+  /**
+   * 将工具观察结果推入消息列表和历史记录
+   */
+  private _pushObservation(
+    messages: Message[],
+    observation: string,
+    toolCall: ToolCall,
+    response: ChatResponse,
+  ): void {
+    this.log(`👀 观察结果: ${observation.slice(0, 150)}${observation.length > 150 ? '...' : ''}`);
+
+    messages.push({
+      role: 'tool',
+      content: observation,
+      tool_call_id: toolCall.id ?? toolCall.name,
+    });
+
+    this.state.history.push({
+      thought: response.content,
+      action: toolCall,
+      observation,
+      timestamp: new Date(),
+    });
+
+    this._notifyStep();
   }
 
   // ============================================================

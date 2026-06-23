@@ -281,7 +281,9 @@ export class OpenAIClient implements ILLMClient {
               yield delta.content;
             }
           } catch {
-            // 跳过无法解析的行
+            // 跳过无法解析的行（如注释或格式错误的 SSE chunk）
+            // 只在 debug 级别记录，避免正常流式中产生噪音
+            debug(`⚠️ SSE 跳过无法解析的行: ${data.slice(0, 80)}`);
           }
         }
       }

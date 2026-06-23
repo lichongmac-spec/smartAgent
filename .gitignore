@@ -31,6 +31,9 @@ coverage/
 .agentrc
 .smartagentrc.local.json
 .smartagentrc.local
+
+# Test artifacts
+test-output/
 .vscode/tsconfig.schema.json
 
 # SmartAgent user data
