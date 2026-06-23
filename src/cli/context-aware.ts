@@ -2,7 +2,7 @@
  * 上下文与交互模块
  *
  * 职责：
- * 1. ContextManager — 对话上下文管理（消息增删、token 估算、窗口裁剪、序列化）
+ * 1. ContextManager — 从 context/ 模块统一导入（唯一实现）
  * 2. 流式输出 — 模拟打字机效果 + SSE 事件解析器（为真实 LLM 对接预留）
  * 3. stdin 管道输入 — 支持 cat file | agent ask "…" 组合调用
  * 4. 文件上下文加载 — --context <file> 将文件内容注入 prompt
@@ -22,36 +22,15 @@ import { readFileSync, existsSync, statSync, openSync, readSync, closeSync } fro
 import { resolve } from 'path';
 
 // ============================================================
-//  类型定义
+//  Re-export ContextManager（唯一实现，来自 context/ 模块）
 // ============================================================
 
-/** 消息角色 */
-export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
+export { ContextManager } from '../context/context-manager.js';
+export type { Message, MessageRole, ContextStats } from '../context/types.js';
 
-/** 单条消息 */
-export interface Message {
-    role: MessageRole;
-    content: string;
-    /** 可选名称（多角色对话时标识说话人） */
-    name?: string;
-    /** 工具调用 ID（role=tool 时使用） */
-    tool_call_id?: string;
-}
-
-/** ContextManager 统计信息 */
-export interface ContextStats {
-    /** 消息总数 */
-    messageCount: number;
-    /** 各角色消息数 */
-    byRole: Record<MessageRole, number>;
-    /** 估算 token 数 */
-    estimatedTokens: number;
-    /** 总字符数 */
-    totalChars: number;
-    /** 最早/最新消息时间（如果有记录） */
-    firstMessageAt?: Date;
-    lastMessageAt?: Date;
-}
+// ============================================================
+//  类型定义（CLI 特有）
+// ============================================================
 
 /** readFromStdin 选项 */
 export interface StdinOptions {
@@ -82,320 +61,7 @@ export interface FileContextOptions {
 }
 
 // ============================================================
-//  1. ContextManager — 对话上下文管理
-// ============================================================
-
-export class ContextManager {
-    private messages: Message[] = [];
-    private _sessionId: string;
-    private _createdAt: Date;
-    private _updatedAt: Date;
-
-    // 粗略 token 估算系数：英文 ~4 字符/token，中文 ~1.5 字符/token
-    private static readonly CHARS_PER_TOKEN_EN = 4;
-    private static readonly CHARS_PER_TOKEN_CN = 1.5;
-
-    constructor(systemPrompt?: string) {
-        this._createdAt = new Date();
-        this._updatedAt = new Date();
-        this._sessionId = this.generateSessionId();
-
-        if (systemPrompt && systemPrompt.trim()) {
-            this.messages.push({ role: 'system', content: systemPrompt.trim() });
-        }
-    }
-
-    // ---- 会话标识 ----
-
-    /** 获取会话 ID */
-    get sessionId(): string {
-        return this._sessionId;
-    }
-
-    /** 重置会话 ID（新对话） */
-    newSession(): string {
-        this._sessionId = this.generateSessionId();
-        return this._sessionId;
-    }
-
-    private generateSessionId(): string {
-        const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-        const timeStr = now.toISOString().slice(11, 19).replace(/:/g, '');
-        const rand = Math.random().toString(36).slice(2, 6);
-        return `${dateStr}-${timeStr}-${rand}`;
-    }
-
-    // ---- 消息管理 ----
-
-    /** 添加用户消息 */
-    addUserMessage(content: string): void {
-        this.messages.push({ role: 'user', content });
-        this._updatedAt = new Date();
-    }
-
-    /** 添加助手消息 */
-    addAssistantMessage(content: string): void {
-        this.messages.push({ role: 'assistant', content });
-        this._updatedAt = new Date();
-    }
-
-    /** 添加系统消息（可多次调用，追加而非覆盖） */
-    addSystemMessage(content: string): void {
-        this.messages.push({ role: 'system', content });
-        this._updatedAt = new Date();
-    }
-
-    /** 添加工具调用结果 */
-    addToolMessage(content: string, toolCallId: string): void {
-        this.messages.push({ role: 'tool', content, tool_call_id: toolCallId });
-        this._updatedAt = new Date();
-    }
-
-    /** 获取所有消息（返回副本，防止外部修改） */
-    getMessages(): Message[] {
-        return [...this.messages];
-    }
-
-    /** 获取最后 N 条消息（不含 system） */
-    getLastN(n: number, includeSystem = false): Message[] {
-        const filtered = includeSystem
-            ? this.messages
-            : this.messages.filter(m => m.role !== 'system');
-        return filtered.slice(-n);
-    }
-
-    /** 获取系统消息 */
-    getSystemMessages(): Message[] {
-        return this.messages.filter(m => m.role === 'system');
-    }
-
-    /** 清空所有消息（保留会话 ID） */
-    clear(keepSystem = true): void {
-        if (keepSystem) {
-            this.messages = this.messages.filter(m => m.role === 'system');
-        } else {
-            this.messages = [];
-        }
-        this._updatedAt = new Date();
-    }
-
-    /** 消息总数 */
-    get length(): number {
-        return this.messages.length;
-    }
-
-    // ---- Token 估算 ----
-
-    /**
-     * 粗略估算 token 数
-     *
-     * 不同模型的 tokenizer 差异很大（GPT vs Claude vs DeepSeek），
-     * 这里用语言启发式做保守估算，实际使用时建议乘以 1.2-1.5 安全系数。
-     *
-     * 启发式：
-     * - 英文/数字/符号 ≈ 4 字符/token
-     * - 中文/日文/韩文 ≈ 1.5 字符/token
-     * - 以中文字符占比 > 30% 判断为"偏中文文本"
-     */
-    estimateTokens(text: string): number {
-        if (!text) return 0;
-
-        let cnChars = 0;
-        let total = 0;
-
-        for (const ch of text) {
-            total++;
-            // Unicode 范围：CJK 统一汉字 + 扩展 + 日文假名 + 韩文
-            const code = ch.codePointAt(0) ?? 0;
-            if (
-                (code >= 0x4E00 && code <= 0x9FFF) ||   // CJK 统一汉字
-                (code >= 0x3400 && code <= 0x4DBF) ||   // CJK 扩展 A
-                (code >= 0x20000 && code <= 0x2A6DF) || // CJK 扩展 B
-                (code >= 0x3040 && code <= 0x309F) ||   // 平假名
-                (code >= 0x30A0 && code <= 0x30FF) ||   // 片假名
-                (code >= 0xAC00 && code <= 0xD7AF)      // 韩文
-            ) {
-                cnChars++;
-            }
-        }
-
-        if (total === 0) return 0;
-
-        const cnRatio = cnChars / total;
-
-        if (cnRatio > 0.3) {
-            // 偏中文：用中文系数
-            return Math.ceil(total / ContextManager.CHARS_PER_TOKEN_CN);
-        } else {
-            // 偏英文：用英文系数
-            return Math.ceil(total / ContextManager.CHARS_PER_TOKEN_EN);
-        }
-    }
-
-    /** 估算整个对话的 token 总数 */
-    get totalTokens(): number {
-        const roleOverheadPerMessage = 4; // 每条消息的 role/name 结构开销 ~4 tokens
-        let tokens = 0;
-        for (const msg of this.messages) {
-            tokens += roleOverheadPerMessage + this.estimateTokens(msg.content);
-        }
-        return tokens;
-    }
-
-    /** 总字符数 */
-    get totalChars(): number {
-        return this.messages.reduce((sum, m) => sum + m.content.length, 0);
-    }
-
-    /** 对话统计 */
-    getStats(): ContextStats {
-        const byRole: Record<MessageRole, number> = {
-            system: 0,
-            user: 0,
-            assistant: 0,
-            tool: 0,
-        };
-
-        for (const msg of this.messages) {
-            byRole[msg.role]++;
-        }
-
-        return {
-            messageCount: this.messages.length,
-            byRole,
-            estimatedTokens: this.totalTokens,
-            totalChars: this.totalChars,
-            firstMessageAt: this._createdAt,
-            lastMessageAt: this._updatedAt,
-        };
-    }
-
-    // ---- 上下文窗口裁剪 ----
-
-    /**
-     * 裁剪消息列表以适应 token 上限
-     *
-     * 策略：
-     * 1. 保留所有 system 消息（它们定义角色行为，不能丢）
-     * 2. 从最早的非 system 消息开始丢弃
-     * 3. 保留足够的安全系数（默认 1.2，比估算多留 20% 余量）
-     *
-     * @param maxTokens  最大 token 数
-     * @param safetyFactor 安全系数（> 1 表示保守裁剪）
-     * @returns 被移除的消息数
-     */
-    trimTo(maxTokens: number, safetyFactor = 1.2): number {
-        const effectiveMax = Math.floor(maxTokens / safetyFactor);
-        const systemMessages = this.messages.filter(m => m.role === 'system');
-        const nonSystemMessages = this.messages.filter(m => m.role !== 'system');
-
-        const systemTokens = systemMessages.reduce(
-            (sum, m) => sum + 4 + this.estimateTokens(m.content),
-            0,
-        );
-
-        const availableForNonSystem = effectiveMax - systemTokens;
-
-        if (availableForNonSystem <= 0) {
-            // 连 system 消息都超了——这种情况不应该发生
-            return 0;
-        }
-
-        let usedTokens = 0;
-        let keepFrom = nonSystemMessages.length;
-
-        // 从后往前累加，找到最早可以保留的位置
-        for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
-            const msgTokens = 4 + this.estimateTokens(nonSystemMessages[i].content);
-            if (usedTokens + msgTokens <= availableForNonSystem) {
-                usedTokens += msgTokens;
-                keepFrom = i;
-            } else {
-                break;
-            }
-        }
-
-        // 确保至少保留最后 1 条非 system 消息，防止对话上下文完全丢失
-        if (keepFrom > 0) {
-            const minKeep = Math.min(1, nonSystemMessages.length);
-            const keepStart = Math.min(keepFrom, nonSystemMessages.length - minKeep);
-            const actualRemoved = nonSystemMessages.length - (nonSystemMessages.length - keepStart);
-            this.messages = [...systemMessages, ...nonSystemMessages.slice(keepStart)];
-            this._updatedAt = new Date();
-            return actualRemoved;
-        }
-
-        return 0;
-    }
-
-    // ---- 序列化 ----
-
-    /** 导出为 JSON 字符串 */
-    toJSON(): string {
-        return JSON.stringify(
-            {
-                sessionId: this._sessionId,
-                createdAt: this._createdAt.toISOString(),
-                updatedAt: this._updatedAt.toISOString(),
-                messages: this.messages,
-            },
-            null,
-            2,
-        );
-    }
-
-    /** 从 JSON 字符串恢复 */
-    static fromJSON(json: string): ContextManager {
-        let data: {
-            sessionId?: string;
-            createdAt?: string;
-            messages: Message[];
-        };
-
-        try {
-            data = JSON.parse(json);
-        } catch {
-            throw new Error('无法解析会话 JSON：格式无效');
-        }
-
-        if (!Array.isArray(data.messages)) {
-            throw new Error('无法解析会话 JSON：缺少 messages 数组');
-        }
-
-        const ctx = new ContextManager();
-
-        ctx._sessionId = data.sessionId ?? ctx._sessionId;
-
-        if (data.createdAt) {
-            const d = new Date(data.createdAt);
-            if (!isNaN(d.getTime())) {
-                ctx._createdAt = d;
-            }
-        }
-
-        for (const msg of data.messages) {
-            if (
-                msg &&
-                typeof msg.role === 'string' &&
-                typeof msg.content === 'string'
-            ) {
-                ctx.messages.push({
-                    role: msg.role as MessageRole,
-                    content: msg.content,
-                    name: msg.name,
-                    tool_call_id: msg.tool_call_id,
-                });
-            }
-        }
-
-        ctx._updatedAt = new Date();
-        return ctx;
-    }
-}
-
-// ============================================================
-//  2. 流式输出
+//  1. 流式输出
 // ============================================================
 
 /**
@@ -461,7 +127,7 @@ export async function printStream(
 }
 
 // ============================================================
-//  3. SSE 流解析器（为真实 LLM 对接预留）
+//  2. SSE 流解析器（为真实 LLM 对接预留）
 // ============================================================
 
 /** SSE 事件块 */
@@ -572,7 +238,7 @@ export class SSEStreamParser {
 }
 
 // ============================================================
-//  4. 管道输入（stdin）
+//  3. 管道输入（stdin）
 // ============================================================
 
 /**
@@ -648,7 +314,7 @@ export function hasPipeInput(): boolean {
 }
 
 // ============================================================
-//  5. 文件上下文加载
+//  4. 文件上下文加载
 // ============================================================
 
 /**

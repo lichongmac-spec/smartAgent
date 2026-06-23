@@ -53,6 +53,10 @@ export class ContextManager {
   /** Token 计数器 */
   private tokenCounter: TokenCounter;
 
+  // 粗略 token 估算系数：英文 ~4 字符/token，中文 ~1.5 字符/token
+  private static readonly CHARS_PER_TOKEN_EN = 4;
+  private static readonly CHARS_PER_TOKEN_CN = 1.5;
+
   // ============================================================
   //  构造函数（创建管理器）
   // ============================================================
@@ -100,6 +104,12 @@ export class ContextManager {
   /** 获取最后更新时间 */
   get updatedAt(): Date {
     return this._updatedAt;
+  }
+
+  /** 重置会话 ID（新对话） */
+  newSession(): string {
+    this._sessionId = this.generateSessionId();
+    return this._sessionId;
   }
 
   /**
@@ -174,9 +184,14 @@ export class ContextManager {
    * 理解：工具执行完，把结果放进聊天记录里
    *
    * @param content - 工具执行结果
+   * @param toolCallId - 可选的工具调用 ID
    */
-  addToolMessage(content: string): void {
-    this.messages.push({ role: 'tool', content });
+  addToolMessage(content: string, toolCallId?: string): void {
+    this.messages.push({
+      role: 'tool',
+      content,
+      ...(toolCallId ? { tool_call_id: toolCallId } : {}),
+    });
     this._updatedAt = new Date();
   }
 
@@ -241,6 +256,57 @@ export class ContextManager {
     return this.messages.length;
   }
 
+  /**
+   * 总字符数
+   */
+  get totalChars(): number {
+    return this.messages.reduce((sum, m) => sum + m.content.length, 0);
+  }
+
+  // ============================================================
+  //  Token 估算
+  // ============================================================
+
+  /**
+   * 粗略估算单条文本的 token 数
+   *
+   * 启发式：
+   * - 英文/数字/符号 ≈ 4 字符/token
+   * - 中文/日文/韩文 ≈ 1.5 字符/token
+   * - 以中文字符占比 > 30% 判断为"偏中文文本"
+   */
+  estimateTokens(text: string): number {
+    if (!text) return 0;
+
+    let cnChars = 0;
+    let total = 0;
+
+    for (const ch of text) {
+      total++;
+      const code = ch.codePointAt(0) ?? 0;
+      if (
+        (code >= 0x4E00 && code <= 0x9FFF) ||   // CJK 统一汉字
+        (code >= 0x3400 && code <= 0x4DBF) ||   // CJK 扩展 A
+        (code >= 0x20000 && code <= 0x2A6DF) || // CJK 扩展 B
+        (code >= 0x3040 && code <= 0x309F) ||   // 平假名
+        (code >= 0x30A0 && code <= 0x30FF) ||   // 片假名
+        (code >= 0xAC00 && code <= 0xD7AF)      // 韩文
+      ) {
+        cnChars++;
+      }
+    }
+
+    if (total === 0) return 0;
+
+    const cnRatio = cnChars / total;
+
+    if (cnRatio > 0.3) {
+      return Math.ceil(total / ContextManager.CHARS_PER_TOKEN_CN);
+    } else {
+      return Math.ceil(total / ContextManager.CHARS_PER_TOKEN_EN);
+    }
+  }
+
   // ============================================================
   //  统计信息
   // ============================================================
@@ -277,6 +343,8 @@ export class ContextManager {
       byRole,
       estimatedTokens: totalTokens,
       totalChars,
+      firstMessageAt: this._createdAt,
+      lastMessageAt: this._updatedAt,
     };
   }
 
@@ -441,7 +509,22 @@ export class ContextManager {
    *   const ctx = ContextManager.fromJSON(json);
    */
   static fromJSON(json: string): ContextManager {
-    const data = JSON.parse(json);
+    let data: {
+      sessionId?: string;
+      createdAt?: string;
+      updatedAt?: string;
+      messages?: Array<Record<string, unknown>>;
+    };
+
+    try {
+      data = JSON.parse(json);
+    } catch {
+      throw new Error('无法解析会话 JSON：格式无效');
+    }
+
+    if (!Array.isArray(data.messages)) {
+      throw new Error('无法解析会话 JSON：缺少 messages 数组');
+    }
 
     // 创建新的上下文
     const ctx = new ContextManager();
@@ -456,11 +539,13 @@ export class ContextManager {
     }
 
     // 恢复消息
-    for (const msg of data.messages || []) {
+    for (const msg of data.messages) {
       if (msg.role === 'system' || msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
         ctx.messages.push({
           role: msg.role as MessageRole,
-          content: msg.content,
+          content: msg.content as string,
+          name: msg.name as string | undefined,
+          tool_call_id: msg.tool_call_id as string | undefined,
         });
       }
     }

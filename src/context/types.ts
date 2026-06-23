@@ -32,4 +32,8 @@ export interface ContextStats {
   estimatedTokens: number;
   /** 总字符数 */
   totalChars: number;
+  /** 最早消息时间 */
+  firstMessageAt?: Date;
+  /** 最新消息时间 */
+  lastMessageAt?: Date;
 }

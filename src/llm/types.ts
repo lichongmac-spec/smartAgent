@@ -36,6 +36,8 @@ export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 export interface Message {
   role: MessageRole;
   content: string;
+  /** 可选名称（多角色对话时标识说话人） */
+  name?: string;
   /** 工具调用 ID（role='tool' 时必填，告诉 AI 这是哪个调用的结果） */
   tool_call_id?: string;
   /** 工具调用列表（role='assistant' + Function Calling 时使用） */

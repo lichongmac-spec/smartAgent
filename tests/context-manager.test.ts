@@ -433,19 +433,24 @@ async function main() {
   }
 
   // ============================================================
-  //  18. fromJSON 空 JSON
+  //  18. fromJSON 缺少 messages 字段
   // ============================================================
 
   testCount++;
   try {
-    const restored = ContextManager.fromJSON('{}');
-    assertEq(restored.length, 0, '空 JSON 应返回空上下文');
-    assert(typeof restored.sessionId === 'string', '会话 ID 应为字符串');
+    let threw = false;
+    try {
+      ContextManager.fromJSON('{}');
+    } catch (e) {
+      threw = true;
+      assert((e as Error).message.includes('缺少 messages'), '应提示缺少 messages');
+    }
+    assert(threw, '空 JSON 对象应抛出异常');
     passCount++;
-    console.log('  ✅ fromJSON 空对象');
+    console.log('  ✅ fromJSON 缺少 messages');
   } catch (e) {
     failCount++;
-    console.log(`  ❌ fromJSON 空对象: ${(e as Error).message}`);
+    console.log(`  ❌ fromJSON 缺少 messages: ${(e as Error).message}`);
   }
 
   // ============================================================
