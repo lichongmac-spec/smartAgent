@@ -31,10 +31,19 @@ export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
  *   { role: 'user', content: '你好' }        // 用户说的
  *   { role: 'assistant', content: '你好！' }  // AI 说的
  *   { role: 'system', content: '你是助手' }   // 系统设定的"人设"
+ *   { role: 'tool', content: '{"result":42}', tool_call_id: 'call_xxx' }  // 工具返回
  */
 export interface Message {
   role: MessageRole;
   content: string;
+  /** 工具调用 ID（role='tool' 时必填，告诉 AI 这是哪个调用的结果） */
+  tool_call_id?: string;
+  /** 工具调用列表（role='assistant' + Function Calling 时使用） */
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
 }
 
 // ============================================================
@@ -47,6 +56,8 @@ export interface Message {
  * 理解：AI 说"我需要用 read_file 工具来读某个文件"
  */
 export interface ToolCall {
+  /** 工具调用 ID（OpenAI 生成，用于关联 tool 消息） */
+  id?: string;
   /** 工具名（如 "read_file"、"run_terminal"） */
   name: string;
   /** 工具参数（JSON 字符串） */

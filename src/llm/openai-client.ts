@@ -36,25 +36,40 @@ const DEFAULT_EMBED_TIMEOUT = 30000;
 function buildOpenAIMessages(
   messages: Message[],
   systemPrompt?: string,
-): Array<{ role: string; content: string }> {
-  const result: Array<{ role: string; content: string }> = [];
+): Array<{ role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown }> {
+  const result: Array<{ role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown }> = [];
   if (systemPrompt) {
     result.push({ role: 'system', content: systemPrompt });
   }
   for (const msg of messages) {
-    result.push({ role: msg.role, content: msg.content });
+    const entry: { role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown } = {
+      role: msg.role,
+      content: msg.content || null,
+    };
+    if (msg.tool_call_id) {
+      entry.tool_call_id = msg.tool_call_id;
+    }
+    if (msg.tool_calls) {
+      entry.tool_calls = msg.tool_calls;
+    }
+    result.push(entry);
   }
   return result;
 }
 
 /**
  * 解析 OpenAI 响应中的工具调用
+ *
+ * OpenAI 响应格式：
+ *   choice.message.tool_calls = [{ id, type, function: { name, arguments } }]
  */
 function parseToolCalls(choice: Record<string, unknown>): ToolCall[] | undefined {
-  const toolCalls = choice.tool_calls as Array<Record<string, unknown>> | undefined;
+  const message = choice.message as Record<string, unknown> | undefined;
+  const toolCalls = message?.tool_calls as Array<Record<string, unknown>> | undefined;
   if (!toolCalls || toolCalls.length === 0) return undefined;
 
   return toolCalls.map((tc) => ({
+    id: tc.id as string | undefined,
     name: (tc.function as Record<string, string>).name ?? '',
     arguments: (tc.function as Record<string, string>).arguments ?? '{}',
   }));
