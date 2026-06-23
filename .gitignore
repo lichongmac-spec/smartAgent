@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+package-lock.json
 
 # Build output
 dist/
@@ -31,6 +32,7 @@ coverage/
 .agentrc
 .smartagentrc.local.json
 .smartagentrc.local
+.smartagentrc
 
 # Test artifacts
 test-output/
