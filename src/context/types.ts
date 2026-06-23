@@ -33,15 +33,3 @@ export interface ContextStats {
   /** 总字符数 */
   totalChars: number;
 }
-
-/**
- * 会话元数据（序列化时会保存这些信息）
- *
- * 理解：就像聊天记录的"封面信息"
- */
-export interface SessionMetadata {
-  sessionId: string;
-  createdAt: string;   // ISO 8601
-  updatedAt: string;   // ISO 8601
-  messages: Array<{ role: string; content: string }>;
-}

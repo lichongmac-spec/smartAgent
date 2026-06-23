@@ -17,15 +17,13 @@ import {
     ContextManager,
     readFromStdin,
     loadContextFromFile,
-    printStream,
-    streamResponse,
 } from './context-aware.js';
 import { logger } from './logger.js';
 import { renderKVTable } from './utils/table.js';
 import { redactApiKey } from './utils/secrets.js';
 import { setupAutocomplete, enhancedChatCompleter, modelCompleter } from './utils/autocomplete.js';
 import { withRetry, type RetryOptions } from './utils/retry.js';
-import { withTimeoutAndSignal, TimeoutError } from './utils/timeout.js';
+import { withTimeoutAndSignal } from './utils/timeout.js';
 import { profile } from './utils/profile.js';
 import { setVerbose, debug } from './utils/debug.js';
 import { sessionManager } from './utils/session.js';
@@ -70,9 +68,7 @@ export function registerAdvancedCommands(program: Command): void {
             if (options.global) console.log('🌍 写入全局配置');
         });
 
-    // src/cli/advanced-commands.ts (config 相关部分更新)
-
-    // 在 config get 中验证配置
+    // config get - 获取单个配置项
     configCmd
         .command('get <key>')
         .description('获取配置项')
@@ -325,10 +321,7 @@ export function registerAdvancedCommands(program: Command): void {
 
                 debug('最终 prompt 组装完成', { length: finalPrompt.length });
 
-                // ---- 5. 构建上下文（如果未从会话加载） ----
-                if (!ctx) {
-                    ctx = new ContextManager(systemPrompt);
-                }
+                // ---- 5. 添加用户消息到上下文 ----
                 ctx.addUserMessage(finalPrompt);
 
                 if (doProfile) {
@@ -695,9 +688,9 @@ export function registerAdvancedCommands(program: Command): void {
             }
         });
 
-    // src/cli/advanced-commands.ts
-
-    // ============ 隐藏的测试命令 ============
+    // ============================================================
+    //  隐藏的测试命令: test:error
+    // ============================================================
     program
         .command('test:error')
         .description('测试错误处理模块（隐藏命令）')

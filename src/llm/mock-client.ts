@@ -142,9 +142,6 @@ function detectMockToolCall(
 export class MockLLMClient implements ILLMClient {
   private modelName = 'mock-model-v1';
 
-  /** 已触发工具调用的轮数（用于模拟多轮工具调用） */
-  private _toolCallRounds: Map<string, number> = new Map();
-
   constructor() {
     info('🟡 Mock 客户端初始化（离线模式 + Function Calling 模拟）');
   }

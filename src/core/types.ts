@@ -93,12 +93,3 @@ export interface LoopConfig {
  * 理解：每一步执行时通知外部（用于 UI 更新、日志等）
  */
 export type StepCallback = (state: Readonly<LoopState>) => void;
-
-/**
- * 工具执行前/后回调
- */
-export type ToolCallback = (
-  toolName: string,
-  args: Record<string, unknown>,
-  result: unknown,
-) => void;

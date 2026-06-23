@@ -50,14 +50,7 @@ if (startupConfig.provider === 'deepseek' || startupConfig.provider === 'openai'
 // ============ 2. 优雅退出 ============
 setupGracefulShutdown({
     verbose: true,
-    cleanupFns: [
-        // 示例清理函数
-        async () => {
-            // 保存当前配置
-            const config = configManager.get();
-            // 可以在此执行清理操作，如保存临时状态
-        },
-    ],
+    cleanupFns: [],
 });
 
 // ============ 3. 创建 CLI 主程序 ============
