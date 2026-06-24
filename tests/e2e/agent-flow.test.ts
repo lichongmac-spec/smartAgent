@@ -108,13 +108,12 @@ test('ask "hello" --no-stream', () => {
     const r = runCli(['ask', 'hello', '--no-stream']);
     assert(r.code === 0, 'ask 命令成功');
     assert(r.stdout.length > 0, '应有输出');
-    assertIncludes(r.stdout, 'hello', '回显输入');
 });
 
 test('ask 中文输入 --no-stream', () => {
     const r = runCli(['ask', '你好世界，帮我写代码', '--no-stream']);
     assert(r.code === 0, 'ask 中文成功');
-    assertIncludes(r.stdout, '你好世界', '中文回显');
+    assert(r.stdout.length > 0, '应有输出');
 });
 
 test('ask --model deepseek-reasoner --no-stream', () => {

@@ -30,6 +30,9 @@ import { sessionManager } from './utils/session.js';
 import { StreamHandler, createMockSSEStream } from './utils/stream-handler.js';
 import { dumpContext } from './utils/interactive-debugger.js';
 import pc from 'picocolors';
+import { createLLMClientFromConfig } from '../llm/client-factory.js';
+import { LoopEngine } from '../core/loop-engine.js';
+import { createDefaultToolRegistry } from '../tools/index.js';
 
 export function registerAdvancedCommands(program: Command): void {
     // ============================================================
@@ -321,9 +324,7 @@ export function registerAdvancedCommands(program: Command): void {
 
                 debug('最终 prompt 组装完成', { length: finalPrompt.length });
 
-                // ---- 5. 添加用户消息到上下文 ----
-                ctx.addUserMessage(finalPrompt);
-
+                // ---- 5. 记录 token 估算（不提前把用户消息加入 ctx，LoopEngine 会自行处理） ----
                 if (doProfile) {
                     const ctxStats = ctx.getStats();
                     console.log(`\x1b[36m⏱ [Profile]\x1b[0m context-build: ${ctxStats.estimatedTokens} tokens, ${ctxStats.messageCount} 条消息`);
@@ -344,34 +345,42 @@ export function registerAdvancedCommands(program: Command): void {
                     logger.blank();
                 }
 
-                // ---- 6. 调用 LLM（支持重试 + 超时 + 取消 + 流式输出） ----
-                // TODO: 替换为真实 API 调用
-                // 当前使用 Mock SSE 流演示流式输出能力
+                // ---- 6. 调用 LLM（支持重试 + 超时 + 取消） ----
                 const retryTimes = options.retry ?? 0;
                 const timeoutMs = options.timeout;
                 const doStream = options.stream !== false;
 
-                // Mock: 生成回复文本
-                const mockResponse =
-                    `收到问题: "${prompt}"\n\n` +
-                    `当前上下文包含 ${ctx.length} 条消息，` +
-                    `估算 ${ctx.totalTokens} tokens。\n\n` +
-                    `这是模拟回复 —— 接入真实 LLM API 后将返回实际内容。`;
+                // 创建 LLM 客户端（自动检测 Provider：DeepSeek / OpenAI / Ollama / Mock）
+                const llmClient = await createLLMClientFromConfig(
+                    model ? { model } : undefined,
+                );
 
-                // 使用 StreamHandler 处理流式输出
+                // 创建工具注册表
+                const toolRegistry = createDefaultToolRegistry();
+
+                // 创建 Loop 引擎（含工具调用能力）
+                const loopEngine = new LoopEngine(llmClient, toolRegistry, {
+                    maxSteps: 10,
+                    systemPrompt: systemPrompt,
+                    verbose: options.verbose ?? false,
+                    contextManager: ctx,
+                    injectHistory: true,
+                });
+
+                // 实际 LLM 调用（支持 AbortSignal）
                 const callLLM = async (signal?: AbortSignal): Promise<string> => {
                     signal?.throwIfAborted();
 
+                    // 使用 LoopEngine 执行 ReAct 循环
+                    const answer = await loopEngine.run(finalPrompt);
+
                     if (doStream) {
-                        // 流式输出：通过 Mock SSE 流演示
-                        const mockResponseObj = createMockSSEStream(mockResponse, 10);
+                        // 流式展示：把 LoopEngine 的最终回答通过 Mock SSE 流逐字打出
+                        const mockResponseObj = createMockSSEStream(answer, 8);
                         const handler = new StreamHandler();
 
                         console.log(''); // 空行分隔
                         const fullText = await handler.processSSE(mockResponseObj, {
-                            onToken: (token) => {
-                                // token 已实时输出到 stdout
-                            },
                             onComplete: () => {
                                 console.log(''); // 输出完成，换行
                             },
@@ -383,7 +392,7 @@ export function registerAdvancedCommands(program: Command): void {
                         return fullText;
                     } else {
                         // 非流式：直接返回
-                        return mockResponse;
+                        return answer;
                     }
                 };
 
@@ -437,6 +446,8 @@ export function registerAdvancedCommands(program: Command): void {
                         (s: any) => s.name === options.session || s.id.startsWith(options.session),
                     );
                     if (found) {
+                        // 补充记录用户消息和 AI 回复（LoopEngine 内部不操作外部 ctx）
+                        ctx.addUserMessage(finalPrompt);
                         ctx.addAssistantMessage(response);
                         sessionManager.saveContext(found.id, ctx);
                     }
@@ -630,8 +641,6 @@ export function registerAdvancedCommands(program: Command): void {
                     }
 
                     // ---- 正常对话 ----
-                    ctx.addUserMessage(line);
-
                     const doProfile = options.profile ?? false;
                     const doStream = options.stream !== false;
 
@@ -641,27 +650,40 @@ export function registerAdvancedCommands(program: Command): void {
                         ctxTokens: ctx.totalTokens,
                     });
 
-                    // Mock 回复
-                    const mockResponse =
-                        `收到: "${line.length > 60 ? line.slice(0, 60) + '…' : line}"\n` +
-                        `当前上下文 ${ctx.length} 条消息，估算 ${ctx.totalTokens} tokens。`;
+                    // 创建 LLM 客户端 + Loop 引擎
+                    const chatLLM = await createLLMClientFromConfig(
+                        model ? { model } : undefined,
+                    );
+                    const chatTools = createDefaultToolRegistry();
+                    const chatEngine = new LoopEngine(chatLLM, chatTools, {
+                        maxSteps: 10,
+                        systemPrompt: options.systemPrompt,
+                        verbose: options.verbose ?? false,
+                        contextManager: ctx,
+                        injectHistory: true,
+                    });
+
+                    // 执行 ReAct 循环
+                    const answer = await chatEngine.run(line);
 
                     // 流式输出
                     if (doStream) {
-                        const mockResponseObj = createMockSSEStream(mockResponse, 15);
+                        const responseObj = createMockSSEStream(answer, 8);
                         const handler = new StreamHandler();
 
                         console.log(''); // 空行
-                        await handler.processSSE(mockResponseObj, {
+                        await handler.processSSE(responseObj, {
                             onComplete: () => { console.log(''); },
                         });
                     } else {
                         console.log('');
-                        console.log(mockResponse);
+                        console.log(answer);
                         console.log('');
                     }
 
-                    ctx.addAssistantMessage(mockResponse);
+                    // 把本轮对话同步到 ctx（供 stats 和会话保存使用）
+                    ctx.addUserMessage(line);
+                    ctx.addAssistantMessage(answer);
 
                     // 保存到会话
                     if (options.session) {
@@ -675,7 +697,7 @@ export function registerAdvancedCommands(program: Command): void {
                     }
 
                     debug('LLM 响应', {
-                        responseLength: mockResponse.length,
+                        responseLength: answer.length,
                         ctxMessages: ctx.length + 1,
                     });
 
