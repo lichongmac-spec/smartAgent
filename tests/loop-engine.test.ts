@@ -436,6 +436,140 @@ await describe('中断和回调', async () => {
 });
 
 // ============================================================
+//  6. 工具调用路径测试（模拟真实的 ReAct Think→Act→Observe 流程）
+// ============================================================
+
+await describe('工具调用路径', async () => {
+  const tools = createDefaultToolRegistry(false);
+
+  await testAsync('单次工具调用 - calculator', async () => {
+    const mockLLM = new MockLLMClient();
+    const engine = new LoopEngine(mockLLM, tools, { maxSteps: 5, verbose: false });
+    const result = await engine.run('帮我计算 3 * 7');
+
+    // 应包含计算结果
+    assertOk(result.length > 0, '结果不应为空');
+    const state = engine.getState();
+    assertEq(state.status, 'done', '应为 done 状态');
+
+    // 检查 history 中是否有工具调用记录
+    const toolSteps = state.history.filter(h => h.action);
+    assertOk(toolSteps.length >= 1, `至少 1 次工具调用，实际 ${toolSteps.length}`);
+    assertEq(toolSteps[0].action!.name, 'calculator', '应调用 calculator');
+
+    const obsSteps = state.history.filter(h => h.observation);
+    assertOk(obsSteps.length >= 1, '应有工具观察记录');
+  });
+
+  await testAsync('单次工具调用 - read_file', async () => {
+    const testPath = join(TEST_TMP, `loop-tooltest-${Date.now()}.txt`);
+    writeFileSync(testPath, 'Tool test content: Hello!', 'utf-8');
+
+    try {
+      const mockLLM = new MockLLMClient();
+      const engine = new LoopEngine(mockLLM, tools, { maxSteps: 5, verbose: false });
+      // "读取" 关键词 + 文件名触发 read_file 工具调用
+      const result = await engine.run(`读取文件 "${testPath}"`);
+
+      assertOk(result.length > 0, '结果不应为空');
+      const state = engine.getState();
+      assertEq(state.status, 'done', '应为 done 状态');
+      assertOk(state.step >= 2, '至少 2 步（工具调用 + 分析回答）');
+    } finally {
+      try { unlinkSync(testPath); } catch {}
+    }
+  });
+
+  await testAsync('工具调用后观察结果回传', async () => {
+    const mockLLM = new MockLLMClient();
+    const engine = new LoopEngine(mockLLM, tools, { maxSteps: 5, verbose: false });
+    const result = await engine.run('计算 100 / 4');
+
+    assertOk(result.length > 0, '结果不应为空');
+    const state = engine.getState();
+
+    // 验证观察（observation）被记录了
+    const observations = state.history.filter(h => h.observation);
+    assertOk(observations.length >= 1, `应有工具观察，实际 ${observations.length}`);
+
+    // 观察应包含执行结果（calculator 返回 success + result + expression）
+    const obs = observations[0].observation!;
+    assertOk(obs.includes('result') || obs.includes('success'), `观察应包含结果: ${obs.slice(0, 100)}`);
+  });
+
+  await testAsync('工具调用错误处理（不存在的文件）', async () => {
+    const mockLLM = new MockLLMClient();
+    const engine = new LoopEngine(mockLLM, tools, { maxSteps: 5, verbose: false });
+    // read_file 处理不存在的文件时通过错误消息告知 AI
+    const result = await engine.run('读一下 nosuchfile_abc.txt');
+
+    // 即使工具失败，引擎也应该能处理并返回结果（Mock 会生成基于错误观察的回复）
+    assertOk(result.length > 0, '即使工具失败也应有回复');
+    const state = engine.getState();
+    assertEq(state.status, 'done', '应正常结束');
+  });
+
+  await testAsync('runStream 流式输出', async () => {
+    const mockLLM = new MockLLMClient();
+    const engine = new LoopEngine(mockLLM, tools, { maxSteps: 3, verbose: false });
+
+    const chunks: string[] = [];
+    for await (const chunk of engine.runStream('你好')) {
+      chunks.push(chunk);
+    }
+
+    const fullText = chunks.join('');
+    assertOk(fullText.length > 0, '流式输出不应为空');
+    assertOk(chunks.length > 1, `应有多块输出，实际 ${chunks.length} 块`);
+    assertOk(fullText.includes('你好'), '输出应相关');
+
+    const state = engine.getState();
+    assertEq(state.status, 'done', '流式完成后状态为 done');
+  });
+
+  await testAsync('runStream 带工具调用', async () => {
+    const mockLLM = new MockLLMClient();
+    const engine = new LoopEngine(mockLLM, tools, { maxSteps: 5, verbose: false });
+
+    const chunks: string[] = [];
+    for await (const chunk of engine.runStream('帮我计算 5 + 3')) {
+      chunks.push(chunk);
+    }
+
+    const fullText = chunks.join('');
+    assertOk(fullText.length > 0, '流式输出不应为空');
+
+    // 应包含工具调用提示或结果
+    const hasToolInfo = fullText.includes('🔧') || fullText.includes('8') || fullText.includes('工具');
+    assertOk(hasToolInfo, `应包含工具调用信息，实际输出: ${fullText.slice(0, 200)}`);
+
+    const state = engine.getState();
+    assertEq(state.status, 'done', '流式完成后状态为 done');
+  });
+
+  await testAsync('中断流式输出', async () => {
+    const mockLLM = new MockLLMClient();
+    const engine = new LoopEngine(mockLLM, tools, { maxSteps: 5, verbose: false });
+
+    // 在启动流式输出后立即中断
+    const chunks: string[] = [];
+    try {
+      for await (const chunk of engine.runStream('你好')) {
+        chunks.push(chunk);
+        if (chunks.length >= 3) {
+          engine.interrupt();
+        }
+      }
+    } catch {
+      // 中断可能抛出错误，正常处理
+    }
+
+    // 应该收到一些输出然后被中断
+    assertOk(chunks.length > 0, '应至少收到一些输出');
+  });
+});
+
+// ============================================================
 //  结果汇总
 // ============================================================
 

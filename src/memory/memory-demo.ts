@@ -15,7 +15,7 @@
  */
 
 import { MemoryManager } from './memory-manager.js';
-import { MockEmbeddingModel } from './embedding.js';
+import { createEmbeddingModel } from './embedding.js';
 
 const SEP = '━'.repeat(60);
 
@@ -23,8 +23,8 @@ async function main(): Promise<void> {
   console.log('\n🧠 记忆系统演示');
   console.log(SEP);
 
-  // ── 1. 选择嵌入模型 ──
-  const embedder = new MockEmbeddingModel();
+  // ── 1. 自动选择最优嵌入模型 ──
+  const embedder = await createEmbeddingModel();
   console.log('✅ 使用嵌入模型:', embedder.constructor.name);
 
   // ── 2. 创建记忆管理器 ──

@@ -27,6 +27,7 @@ import type { ILLMClient, Message, ChatResponse, ToolCall } from '../llm/types.j
 import type { LoopState, LoopConfig, StepCallback, StepRecord } from './types.js';
 import { ToolRegistry } from '../tools/registry.js';
 import type { ContextManager } from '../context/context-manager.js';
+import { isRetryableError } from '../llm/errors.js';
 
 // ============================================================
 //  ReAct 系统提示词
@@ -111,8 +112,17 @@ export class LoopEngine {
   /** 当前状态 */
   private state: LoopState;
 
-  /** 中断标志 */
+  /** 中断标志（快速轮询路径，用于步骤间中断） */
   private _interrupted: boolean = false;
+
+  /** AbortController（用于取消正在进行的 LLM 请求） */
+  private _abortController: AbortController | null = null;
+
+  /** 连续 LLM 调用失败重试计数 */
+  private _retryCount: number = 0;
+
+  /** 最大重试次数 */
+  private _maxRetries: number = 3;
 
   /** 步骤回调 */
   private onStep?: StepCallback;
@@ -147,11 +157,15 @@ export class LoopEngine {
 
     this.config = {
       maxSteps: config.maxSteps ?? 10,
+      maxRetries: config.maxRetries ?? 3,
       systemPrompt: config.systemPrompt ?? '',
       verbose: config.verbose ?? true,
       injectHistory: config.injectHistory ?? false,
+      maxContextTokens: config.maxContextTokens ?? 0,
       contextManager: config.contextManager,
     } as Required<LoopConfig> & { contextManager?: ContextManager };
+
+    this._maxRetries = this.config.maxRetries;
 
     this.state = this._createInitialState();
   }
@@ -174,6 +188,9 @@ export class LoopEngine {
   async run(userInput: string): Promise<string> {
     // 重置状态
     this.state = this._createInitialState();
+    this._retryCount = 0;
+    // 创建新的 AbortController（每次 run 独立）
+    this._abortController = new AbortController();
     // 注意：不重置 _interrupted —— 如果用户之前中断了，run() 仍会立即返回
     this.state.status = 'thinking';
 
@@ -218,6 +235,7 @@ export class LoopEngine {
         this.state.finalAnswer = '执行已被用户中断';
         this.state.finishedAt = new Date();
         this._interrupted = false;
+        this._abortController = null;
         this.log('⏹️ 执行已被中断');
         return this.state.finalAnswer;
       }
@@ -226,6 +244,15 @@ export class LoopEngine {
 
       this.log(`\n${'━'.repeat(50)}`);
       this.log(`📌 步骤 ${this.state.step}/${this.config.maxSteps}`);
+
+      // ---- 2.0 上下文裁剪（防止 Token 溢出） ----
+      if (this.config.maxContextTokens > 0 && messages.length > 2) {
+        const estimatedTokens = this._estimateTotalTokens(messages);
+        if (estimatedTokens > this.config.maxContextTokens) {
+          const trimmed = this._trimMessages(messages, this.config.maxContextTokens);
+          this.log(`✂️ 上下文超限 (${estimatedTokens}/${this.config.maxContextTokens} Token)，裁剪了 ${trimmed} 条消息`);
+        }
+      }
 
       // ---- 2.1 思考 (Think) ----
       this.state.status = 'thinking';
@@ -236,11 +263,55 @@ export class LoopEngine {
         response = await this.llm.chat(messages, {
           tools: this.tools.getDefinitions(),
           temperature: 0.3, // 低温度，让 AI 更专注于任务
+          signal: this._abortController!.signal,
         });
       } catch (error) {
+        // 如果是 AbortError（用户取消），立即退出
+        if (error instanceof Error && error.name === 'AbortError') {
+          this.state.status = 'error';
+          this.state.finalAnswer = '执行已被用户中断';
+          this.state.finishedAt = new Date();
+          this._interrupted = false;
+          this._abortController = null;
+          this.log('⏹️ 执行已被中断（请求级别取消）');
+          return this.state.finalAnswer;
+        }
+
+        // 智能重试：区分可重试和不可重试错误
+        if (isRetryableError(error)) {
+          this._retryCount++;
+          if (this._retryCount <= this._maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, this._retryCount - 1), 10000);
+            const errMsg = error instanceof Error ? error.message : String(error);
+            this.log(`🔄 可重试错误: ${errMsg}`);
+            this.log(`   第 ${this._retryCount}/${this._maxRetries} 次重试（${delay}ms 后）...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          // 超过最大重试次数
+          this.state.status = 'error';
+          this.state.finalAnswer = `LLM 调用连续失败 ${this._maxRetries} 次，请检查网络连接或 API 配置后重试。`;
+          this.state.finishedAt = new Date();
+          this._interrupted = false;
+          this._abortController = null;
+          this.log(`❌ 超过最大重试次数 (${this._maxRetries})，终止执行`);
+          return this.state.finalAnswer;
+        }
+
+        // 不可重试错误：记录并终止
         this._handleError(error, messages);
-        continue; // 尝试继续（可能下一轮就恢复了）
+        this.state.status = 'error';
+        const errMsg = error instanceof Error ? error.message : String(error);
+        this.state.finalAnswer = `LLM 调用发生不可恢复的错误: ${errMsg}`;
+        this.state.finishedAt = new Date();
+        this._interrupted = false;
+        this._abortController = null;
+        this.log(`❌ 不可重试错误，终止执行: ${errMsg}`);
+        return this.state.finalAnswer;
       }
+
+      // LLM 调用成功，重置重试计数
+      this._retryCount = 0;
 
       // 统计 Token
       if (response.usage) {
@@ -292,16 +363,178 @@ export class LoopEngine {
       this.state.finalAnswer = reason;
       this.state.finishedAt = new Date();
       this._interrupted = false;
+      this._abortController = null;
       this.log(`⚠️ ${reason}`);
       return reason;
     }
 
     // 4. 返回结果
     this._interrupted = false;
+    this._abortController = null;
     this.log(`\n🎉 任务完成！共 ${this.state.step} 步，消耗约 ${this.state.tokensUsed} Token`);
     this._notifyStep();
 
     return finalAnswer;
+  }
+
+  /**
+   * 运行 ReAct 循环（流式模式）
+   *
+   * 理解：就像 run() 的"直播版本"——AI 边思考边输出，用户可以实时看到内容。
+   *
+   * 工作流程：
+   *   1. 思考步骤 → 内部非流式调用（快速检测是否需要工具）
+   *   2. 最终回答 → 流式输出（逐字返回给用户）
+   *
+   * 注意：工具调用检测仍使用非流式 chat，因为 chatStream 的工具调用
+   * 解析是 provider-specific 的（delta chunks），统一处理复杂度太高。
+   *
+   * @param userInput - 用户的问题/任务
+   * @yields 文本片段（逐字或逐块流式输出）
+   *
+   * @example
+   *   for await (const chunk of engine.runStream('介绍一下 TypeScript')) {
+   *     process.stdout.write(chunk);  // 打字机效果
+   *   }
+   */
+  async *runStream(userInput: string): AsyncGenerator<string> {
+    // 重置状态
+    this.state = this._createInitialState();
+    this._retryCount = 0;
+    this._abortController = new AbortController();
+    this.state.status = 'thinking';
+
+    this.log(`🚀 开始执行任务（流式）: "${userInput.slice(0, 80)}${userInput.length > 80 ? '...' : ''}"`);
+
+    // 1. 准备消息列表
+    const messages: Message[] = [];
+    const contextManager = this.config.contextManager;
+    if (contextManager && contextManager.length > 0) {
+      const ctxMessages = contextManager.getMessages();
+      for (const msg of ctxMessages) {
+        messages.push(msg as Message);
+      }
+    } else {
+      const toolsDescription = buildToolsDescription(this.tools);
+      const systemPrompt = buildSystemPrompt(toolsDescription, this.config.systemPrompt);
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+
+    if (contextManager && contextManager.length > 0 && this.config.injectHistory) {
+      const conversation = contextManager.getConversation();
+      for (const msg of conversation) {
+        messages.push(msg as Message);
+      }
+    }
+
+    messages.push({ role: 'user', content: userInput });
+
+    // 2. ReAct 循环（思考步骤用非流式，最终回答用流式）
+    while (this.state.step < this.config.maxSteps) {
+      // 检查中断标志
+      if (this._interrupted) {
+        this.state.status = 'error';
+        this.state.finalAnswer = '执行已被用户中断';
+        this.state.finishedAt = new Date();
+        this._interrupted = false;
+        this._abortController = null;
+        yield '\n⏹️ 执行已被中断\n';
+        return;
+      }
+
+      this.state.step++;
+
+      // 上下文裁剪
+      if (this.config.maxContextTokens > 0 && messages.length > 2) {
+        const estimatedTokens = this._estimateTotalTokens(messages);
+        if (estimatedTokens > this.config.maxContextTokens) {
+          const trimmed = this._trimMessages(messages, this.config.maxContextTokens);
+          yield `\n✂️ 上下文已裁剪 (${trimmed} 条旧消息)\n`;
+        }
+      }
+
+      // --- 思考步骤：内部非流式调用，检测工具调用 ---
+      this.state.status = 'thinking';
+      this.log(`🔍 流式循环第 ${this.state.step} 步 - 思考中...`);
+
+      let thinkResponse: ChatResponse;
+      try {
+        thinkResponse = await this.llm.chat(messages, {
+          tools: this.tools.getDefinitions(),
+          temperature: 0.3,
+          signal: this._abortController!.signal,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          this.state.status = 'error';
+          this.state.finalAnswer = '执行已被用户中断';
+          this.state.finishedAt = new Date();
+          this._interrupted = false;
+          this._abortController = null;
+          yield '\n⏹️ 执行已被中断\n';
+          return;
+        }
+        if (isRetryableError(error)) {
+          this._retryCount++;
+          if (this._retryCount <= this._maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, this._retryCount - 1), 10000);
+            yield `\n🔄 重试中 (${this._retryCount}/${this._maxRetries})...\n`;
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          yield `\n❌ LLM 连续失败 ${this._maxRetries} 次，请检查网络\n`;
+          return;
+        }
+        const errMsg = error instanceof Error ? error.message : String(error);
+        yield `\n❌ 错误: ${errMsg}\n`;
+        return;
+      }
+
+      this._retryCount = 0;
+
+      // Token 统计
+      if (thinkResponse.usage) {
+        this.state.tokensUsed += thinkResponse.usage.totalTokens;
+      } else {
+        this.state.tokensUsed += Math.ceil(thinkResponse.content.length / 4);
+      }
+
+      // 有工具调用？
+      if (thinkResponse.toolCalls && thinkResponse.toolCalls.length > 0) {
+        yield `\n🔧 调用工具: ${thinkResponse.toolCalls.map(t => t.name).join(', ')}\n`;
+        await this._executeToolCalls(thinkResponse, messages);
+        continue;
+      }
+
+      // --- 最终回答：流式输出 ---
+      this.state.status = 'thinking';
+      yield '\n'; // 分隔符
+
+      try {
+        for await (const chunk of this.llm.chatStream(messages, {
+          signal: this._abortController!.signal,
+        })) {
+          yield chunk;
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          yield '\n\n⏹️ 输出已被中断\n';
+          return;
+        }
+        yield `\n\n❌ 流式输出错误: ${error instanceof Error ? error.message : String(error)}\n`;
+        return;
+      }
+
+      this.state.status = 'done';
+      this.state.finishedAt = new Date();
+      this.log('✅ 流式输出完成');
+      break;
+    }
+
+    // 3. 清理
+    this._interrupted = false;
+    this._abortController = null;
+    this.log(`🎉 流式任务完成！共 ${this.state.step} 步`);
   }
 
   // ============================================================
@@ -432,7 +665,11 @@ export class LoopEngine {
    */
   interrupt(): void {
     this._interrupted = true;
-    this.log('⏹️ 收到中断信号');
+    // 立即中止正在进行的 LLM 请求（而非等待轮询）
+    if (this._abortController) {
+      this._abortController.abort();
+    }
+    this.log('⏹️ 收到中断信号（已取消进行中的请求）');
   }
 
   /**
@@ -471,6 +708,98 @@ export class LoopEngine {
     if (this.config.verbose) {
       console.log(message);
     }
+  }
+
+  /**
+   * 估算消息列表的 Token 总量
+   *
+   * 启发式算法：英文 ~4 字符/token，中文 ~1.5 字符/token
+   */
+  private _estimateTotalTokens(messages: Message[]): number {
+    let total = 0;
+    for (const msg of messages) {
+      // 每条消息的 role 及格式开销约 4 Token
+      total += 4;
+      // 内容文本
+      total += this._estimateTextTokens(msg.content);
+    }
+    return total;
+  }
+
+  /** 估算单段文本的 Token 数 */
+  private _estimateTextTokens(text: string): number {
+    if (!text) return 0;
+    let cnChars = 0;
+    let total = 0;
+    for (const ch of text) {
+      total++;
+      const code = ch.codePointAt(0) ?? 0;
+      if (
+        (code >= 0x4E00 && code <= 0x9FFF) ||
+        (code >= 0x3400 && code <= 0x4DBF) ||
+        (code >= 0x20000 && code <= 0x2A6DF) ||
+        (code >= 0x3040 && code <= 0x309F) ||
+        (code >= 0x30A0 && code <= 0x30FF) ||
+        (code >= 0xAC00 && code <= 0xD7AF)
+      ) {
+        cnChars++;
+      }
+    }
+    if (total === 0) return 0;
+    const cnRatio = cnChars / total;
+    return cnRatio > 0.3
+      ? Math.ceil(total / 1.5)
+      : Math.ceil(total / 4);
+  }
+
+  /**
+   * 裁剪消息列表以保持在 Token 上限内
+   *
+   * 策略：
+   *   - 保留所有 system 角色消息
+   *   - 保留最后一条 user 消息（当前问题不能丢）
+   *   - 从前面开始删除，直到 Token 数符合要求
+   *
+   * @returns 被删除的消息数
+   */
+  private _trimMessages(messages: Message[], maxTokens: number): number {
+    const safetyMargin = 0.85; // 留 15% 余量
+    const targetTokens = Math.floor(maxTokens * safetyMargin);
+
+    // 分离 system 消息和非 system 消息
+    const systemMsgs = messages.filter(m => m.role === 'system');
+    const nonSystemMsgs = messages.filter(m => m.role !== 'system');
+    const systemTokens = this._estimateTotalTokens(systemMsgs);
+    const available = targetTokens - systemTokens;
+
+    if (available <= 0 || nonSystemMsgs.length <= 2) return 0;
+
+    // 从后往前累加 Token，找到可以保留的最早位置
+    let usedTokens = 0;
+    let keepFrom = nonSystemMsgs.length;
+
+    for (let i = nonSystemMsgs.length - 1; i >= 0; i--) {
+      const msgTokens = 4 + this._estimateTextTokens(nonSystemMsgs[i].content);
+      if (usedTokens + msgTokens <= available) {
+        usedTokens += msgTokens;
+        keepFrom = i;
+      } else {
+        break;
+      }
+    }
+
+    // 至少保留最后 2 条（user + assistant pair）
+    const minKeep = Math.min(2, nonSystemMsgs.length);
+    const actualKeepFrom = Math.min(keepFrom, nonSystemMsgs.length - minKeep);
+    const removed = actualKeepFrom;
+
+    if (removed > 0) {
+      // 就地修改消息数组
+      messages.length = 0;
+      messages.push(...systemMsgs, ...nonSystemMsgs.slice(actualKeepFrom));
+    }
+
+    return removed;
   }
 
   /** 通知步骤回调 */

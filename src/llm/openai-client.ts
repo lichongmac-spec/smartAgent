@@ -323,6 +323,12 @@ export class OpenAIClient implements ILLMClient {
 
     let response: Response;
     try {
+      // 组合内部超时信号和外部取消信号
+      const timeoutSignal = AbortSignal.timeout(timeout);
+      const fetchSignal = options.signal
+        ? AbortSignal.any([timeoutSignal, options.signal])
+        : timeoutSignal;
+
       response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -330,12 +336,19 @@ export class OpenAIClient implements ILLMClient {
           Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeout),
+        signal: fetchSignal,
       });
     } catch (err) {
       logError(`${this.apiName} 网络请求失败: ${err}`);
       if (err instanceof Error && err.name === 'TimeoutError') {
         throw new NetworkError(`${this.apiName} 请求超时 (${timeout}ms)`);
+      }
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new LLMError(
+          `${this.apiName} 请求被取消`,
+          'REQUEST_CANCELLED',
+          false,
+        );
       }
       throw new LLMError(
         `${this.apiName} 连接失败: ${(err as Error).message}`,

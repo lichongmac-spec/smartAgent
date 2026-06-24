@@ -165,6 +165,16 @@ export interface ChatOptions {
    *  - undefined/void: 不重试（默认）
    */
   retry?: RetryConfig | boolean;
+  /**
+   * AbortSignal —— 外部取消信号
+   *
+   * 理解：就像餐厅里的"取消订单"按钮。LoopEngine 调用 interrupt() 时，
+   * 通过 AbortController 发送取消信号，让正在进行的网络请求立即中止，
+   * 而不是轮询等待。
+   *
+   * 当 signal 被 abort 时，请求立即抛出 AbortError。
+   */
+  signal?: AbortSignal;
 }
 
 /**

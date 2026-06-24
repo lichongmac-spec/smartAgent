@@ -9,8 +9,8 @@
  *   const resolved = resolveSandboxPath('/some/input/path');
  */
 
-import { resolve, normalize, relative } from 'path';
-import { existsSync, statSync } from 'fs';
+import { resolve, normalize, relative, dirname, join } from 'path';
+import { existsSync, statSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
 
 // ============================================================
@@ -196,7 +196,70 @@ export function resolveSandboxPath(
     }
   }
 
-  // 6. 读取模式：文件必须存在
+  // 6. 符号链接真实路径检查（防止通过软链接绕过沙箱）
+  //
+  // 理解：即使路径看起来在沙箱内，也可能通过符号链接指向系统文件。
+  // 例如：ln -s /etc /home/user/project/etc-link
+  // 我们用 realpathSync 解析真实路径后再校验。
+  if (mode === 'read' || existsSync(normalized)) {
+    // 文件存在：直接解析文件的真实路径
+    try {
+      const realPath = realpathSync(normalized);
+      let realPathAllowed = false;
+      for (const root of sandboxRoots) {
+        const rel = relative(root, realPath);
+        if (!rel.startsWith('..') && !resolve(rel).startsWith('..')) {
+          realPathAllowed = true;
+          break;
+        }
+      }
+      if (!realPathAllowed) {
+        return {
+          allowed: false,
+          code: SANDBOX_ERROR.PATH_TRAVERSAL,
+          message: `符号链接指向了沙箱外的路径: "${normalized}" → "${realPath}"`,
+        };
+      }
+    } catch {
+      if (mode === 'read') {
+        return {
+          allowed: false,
+          code: SANDBOX_ERROR.NOT_FOUND,
+          message: `无法解析路径的真实位置: "${normalized}"`,
+        };
+      }
+      // write 模式下文件不存在是正常的（上面 existsSync 已确保文件存在时不会到这里）
+    }
+  } else {
+    // 文件不存在（write 模式创建新文件）：检查父目录的真实路径
+    try {
+      const parentDir = dirname(normalized);
+      const realParentPath = realpathSync(parentDir);
+      let parentAllowed = false;
+      for (const root of sandboxRoots) {
+        const rel = relative(root, realParentPath);
+        if (!rel.startsWith('..') && !resolve(rel).startsWith('..')) {
+          parentAllowed = true;
+          break;
+        }
+      }
+      if (!parentAllowed) {
+        return {
+          allowed: false,
+          code: SANDBOX_ERROR.PATH_TRAVERSAL,
+          message: `父目录的真实路径指向沙箱外: "${parentDir}" → "${realParentPath}"`,
+        };
+      }
+    } catch {
+      return {
+        allowed: false,
+        code: SANDBOX_ERROR.NOT_FOUND,
+        message: `父目录不存在: "${dirname(normalized)}"`,
+      };
+    }
+  }
+
+  // 7. 读取模式：文件必须存在
   if (mode === 'read') {
     try {
       if (!existsSync(normalized)) {

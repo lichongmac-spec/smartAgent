@@ -181,6 +181,11 @@ export class MockLLMClient implements ILLMClient {
   async chat(messages: Message[], options: ChatOptions = {}): Promise<ChatResponse> {
     debug(`📤 Mock 请求: ${messages.length} 条消息`);
 
+    // 支持外部 AbortSignal
+    if (options.signal?.aborted) {
+      throw Object.assign(new Error('Mock 请求被取消'), { name: 'AbortError' });
+    }
+
     // 支持 timeout 模拟
     const timeout = options.timeout ?? 60000;
     await this.simulateDelay(Math.min(50, timeout));

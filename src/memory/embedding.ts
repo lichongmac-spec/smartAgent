@@ -83,3 +83,57 @@ export class OllamaEmbeddingModel implements EmbeddingModel {
     return results;
   }
 }
+
+// ─────────────────────────────────────────────────────────
+//  自动选择最优嵌入模型
+// ─────────────────────────────────────────────────────────
+
+/**
+ * 创建最优嵌入模型（自动检测）
+ *
+ * 优先级：
+ *   1. 如果 Ollama 正在运行且有 nomic-embed-text 模型 → 使用 Ollama（768 维真实向量）
+ *   2. 否则 → 使用 Mock（128 维简单向量，仅用于演示）
+ *
+ * @example
+ *   const embedder = await createEmbeddingModel();
+ *   const manager = new MemoryManager(embedder);
+ */
+export async function createEmbeddingModel(): Promise<EmbeddingModel> {
+  // 尝试 Ollama
+  const ollamaHost = process.env.OLLAMA_HOST ?? 'http://localhost:11434';
+  const ollamaModel = process.env.OLLAMA_EMBED_MODEL ?? 'nomic-embed-text';
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s 超时
+
+    const response = await fetch(`${ollamaHost}/api/tags`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = (await response.json()) as { models?: Array<{ name: string }> };
+      const models = (data.models ?? []).map((m) => m.name);
+
+      // 检查是否有 nomic-embed-text（或环境变量指定的模型）
+      if (models.some((m) => m.startsWith(ollamaModel))) {
+        console.log(`✅ 使用 Ollama 嵌入模型: ${ollamaModel}`);
+        return new OllamaEmbeddingModel({ host: ollamaHost, model: ollamaModel });
+      }
+
+      // Ollama 可用但没有嵌入模型，尝试下载
+      console.log(`⚠️ Ollama 运行中但缺少 ${ollamaModel} 模型，使用 Mock 模式`);
+      console.log(`   提示: 运行 "ollama pull ${ollamaModel}" 安装，约 274MB`);
+    } else {
+      console.log('⚠️ Ollama 不可用，使用 Mock 嵌入模型');
+    }
+  } catch {
+    console.log('⚠️ Ollama 连接失败，使用 Mock 嵌入模型');
+  }
+
+  // Fallback: Mock
+  console.log('📦 使用 Mock 嵌入模型（128 维，仅供演示）');
+  return new MockEmbeddingModel();
+}

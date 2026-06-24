@@ -257,11 +257,17 @@ export class OllamaClient implements ILLMClient {
       }
 
       const startTime = Date.now();
+      // 组合内部超时信号和外部取消信号
+      const timeoutSignal = AbortSignal.timeout(timeout);
+      const fetchSignal = options.signal
+        ? AbortSignal.any([timeoutSignal, options.signal])
+        : timeoutSignal;
+
       const response = await fetch(`${this.host}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeout),
+        signal: fetchSignal,
       });
 
       const elapsed = Date.now() - startTime;
@@ -310,6 +316,14 @@ export class OllamaClient implements ILLMClient {
       // 超时错误
       if (err instanceof Error && err.name === 'TimeoutError') {
         throw new NetworkError(`Ollama 请求超时 (${timeout}ms)`);
+      }
+      // 外部取消
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new LLMError(
+          `Ollama 请求被取消`,
+          'REQUEST_CANCELLED',
+          false,
+        );
       }
 
       // 已经是 LLMError 的直接抛出

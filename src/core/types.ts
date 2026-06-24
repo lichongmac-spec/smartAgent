@@ -73,6 +73,8 @@ export interface LoopState {
 export interface LoopConfig {
   /** 最大步骤数，默认 10 */
   maxSteps?: number;
+  /** LLM 调用最大重试次数，默认 3 */
+  maxRetries?: number;
   /** 系统提示词（AI 的"人设"和"工作方式"） */
   systemPrompt?: string;
   /** 是否在每一步打印日志 */
@@ -81,6 +83,8 @@ export interface LoopConfig {
   injectHistory?: boolean;
   /** 上下文管理器（可选，用于跨 run() 调用保持对话记忆） */
   contextManager?: ContextManager;
+  /** Token 上限，超出后自动裁剪上下文（默认 0 = 不限制） */
+  maxContextTokens?: number;
 }
 
 // ============================================================
