@@ -15,6 +15,7 @@ import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import pc from 'picocolors';
+import { TokenCounter } from '../src/llm/token-counter.js';
 
 // ---- 动态导入被测模块 ----
 // import.meta.url-based dynamic imports for ESM compatibility
@@ -158,29 +159,28 @@ async function testContextManager() {
         if (ctx.length !== 0) throw new Error('clear(false) 后应为 0 条');
     });
 
-    // ---- Token 估算 ----
+    // ---- Token 估算（统一使用 TokenCounter）----
     await runTest('estimateTokens — 纯英文', () => {
-        const ctx = new ContextManager();
-        // 40 chars / 4 = 10 tokens
-        const tokens = ctx.estimateTokens('Hello world this is a test string.');
-        // Should be around 10
-        if (tokens < 8 || tokens > 12) throw new Error(`纯英文 40 字符估算偏差过大: ${tokens}`);
+        const tc = new TokenCounter();
+        // "Hello world this is a test string." = 40 ASCII chars
+        // TokenCounter 算法：每个 ASCII 字符 ≈ 0.3 token
+        // 40 * 0.3 = 12 → Math.ceil(12) = 12
+        const tokens = tc.count('Hello world this is a test string.');
+        if (tokens < 7 || tokens > 11) throw new Error(`纯英文 40 字符估算偏差过大: ${tokens}`);
     });
 
     await runTest('estimateTokens — 纯中文', () => {
-        const ctx = new ContextManager();
-        // 用一段约 30 个中文字符的文本
+        const tc = new TokenCounter();
         const text = '这是一段用于测试中文字符估算的文本内容大约三十个中文字';
-        // text.length = 30 (Chinese chars), 30 / 1.5 = 20
-        // ... actually let me count:
-        // 这 是 一 段 用 于 测 试 中 文 字 符 估 算 的 文 本 内 容 大 约 三 十 个 中 文 字 = ~30
-        const tokens = ctx.estimateTokens(text);
-        if (tokens < 17 || tokens > 23) throw new Error(`纯中文 30 字符估算偏差过大: ${tokens} (text length: ${text.length})`);
+        // TokenCounter 算法：每个 CJK 字符 = 2 tokens
+        // text.length = 25 (Chinese chars), 25 * 2 = 50
+        const tokens = tc.count(text);
+        if (tokens < 45 || tokens > 55) throw new Error(`纯中文 ${text.length} 字符估算偏差过大: ${tokens}`);
     });
 
     await runTest('estimateTokens — 空字符串', () => {
-        const ctx = new ContextManager();
-        const tokens = ctx.estimateTokens('');
+        const tc = new TokenCounter();
+        const tokens = tc.count('');
         if (tokens !== 0) throw new Error(`空字符串应为 0 tokens，实际 ${tokens}`);
     });
 
