@@ -11,7 +11,7 @@
     "test": "tsx tests/test.ts",
     "test:all": "tsx tests/run-all.ts",
     "test:e2e": "tsx tests/e2e/agent-flow.test.ts",
-    "test:agent": "pnpm test:session && pnpm test:streaming && pnpm test:tool-call && pnpm test:e2e",
+    "test:agent": "pnpm test:e2e && tsx tests/integration/tool-call.test.ts",
     "test:alias": "tsx tests/alias.test.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -32,18 +32,13 @@
     "node": ">=18"
   },
   "devDependencies": {
-    "@swc/core": "^1.15.41",
-    "@swc/helpers": "^0.5.23",
     "@types/node": "^25.9.3",
     "nodemon": "^3.1.14",
-    "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",
-    "chalk": "^5.6.2",
     "commander": "^15.0.0",
     "dotenv": "^17.4.2",
     "listr2": "^10.2.1",

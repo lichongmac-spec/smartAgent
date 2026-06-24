@@ -15,19 +15,7 @@
 
 import { table, getBorderCharacters } from 'table';
 import type { Alignment } from 'table';
-import { fileURLToPath } from 'url';
 import { isCI } from '../env-check.js';
-
-// ============================================================
-//  配置（由调用方注入 / 环境变量）
-// ============================================================
-
-let _noColor = false;
-
-/** 注入全局 noColor 状态 */
-export function configureTable(noColor: boolean): void {
-    _noColor = noColor;
-}
 
 // ============================================================
 //  对齐检测
@@ -128,10 +116,8 @@ export function renderTable(
         drawHorizontalLine,
     });
 
-    // 渲染
-    if (title && !_noColor) {
-        console.log(title);
-    } else if (title) {
+    // 渲染标题
+    if (title) {
         console.log(title);
     }
     console.log(output);
@@ -192,36 +178,4 @@ export function renderKVTable(
     ]);
 
     return renderTable(rows, ['Key', 'Value'], options);
-}
-
-// ============================================================
-//  直接运行时 demo（tsx src/cli/utils/table.ts）
-// ============================================================
-
-// 仅在直接运行时输出 demo
-const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
-if (isMainModule) {
-    console.log('=== renderTable demo ===\n');
-
-    renderTable(
-        [
-            ['deepseek-v4-flash', 'DeepSeek', '2026-06', '64K', '¥0.001'],
-            ['gpt-4', 'OpenAI', '2023-03', '128K', '¥0.03'],
-            ['claude-3-opus', 'Anthropic', '2024-03', '200K', '¥0.015'],
-        ],
-        ['Model ID', 'Provider', 'Release', 'Context', 'Price/token'],
-    );
-
-    console.log('\n=== renderKVTable demo ===\n');
-
-    renderKVTable(
-        {
-            model: 'deepseek-v4-flash',
-            temperature: 0.7,
-            maxTokens: 8192,
-            stream: true,
-            apiKey: 'sk-xxxx...xxxx',
-        },
-        { title: '📋 当前配置' },
-    );
 }

@@ -12,7 +12,6 @@ import pc from 'picocolors';
 import {
     renderTable,
     renderKVTable,
-    configureTable,
 } from '../src/cli/utils/table.js';
 
 // ============================================================
@@ -172,10 +171,9 @@ async function main(): Promise<void> {
         assert(containsAny(output, '配置'), '应包含标题');
     });
 
-    // ---- noColor 模式 ----
+    // ---- 边界测试 ----
 
-    await runTest('configureTable — noColor 模式不抛异常', () => {
-        configureTable(true);
+    await runTest('renderTable — 带特殊字符数据', () => {
         let threw = false;
         try {
             captureConsole(() => {
@@ -184,8 +182,7 @@ async function main(): Promise<void> {
         } catch {
             threw = true;
         }
-        configureTable(false); // 恢复
-        assert(!threw, 'noColor 模式不应抛异常');
+        assert(!threw, '基础渲染不应抛异常');
     });
 
     // ---- 集成测试 ----

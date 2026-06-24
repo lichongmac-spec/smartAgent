@@ -186,44 +186,8 @@ export class LoopEngine {
    *   const answer = await engine.run('帮我读取 README.md 的内容');
    */
   async run(userInput: string): Promise<string> {
-    // 重置状态
-    this.state = this._createInitialState();
-    this._retryCount = 0;
-    // 创建新的 AbortController（每次 run 独立）
-    this._abortController = new AbortController();
-    // 注意：不重置 _interrupted —— 如果用户之前中断了，run() 仍会立即返回
-    this.state.status = 'thinking';
-
-    this.log(`🚀 开始执行任务: "${userInput.slice(0, 80)}${userInput.length > 80 ? '...' : ''}"`);
-
-    // 1. 准备消息列表
-    const messages: Message[] = [];
-
-    // 系统提示词
-    // 如果提供了 ContextManager，优先使用它的 toJSON 恢复系统消息
-    const contextManager = this.config.contextManager;
-    if (contextManager && contextManager.length > 0) {
-      // 从 ContextManager 恢复已有上下文（系统消息 + 历史对话）
-      const ctxMessages = contextManager.getMessages();
-      for (const msg of ctxMessages) {
-        messages.push(msg as Message);
-      }
-    } else {
-      const toolsDescription = buildToolsDescription(this.tools);
-      const systemPrompt = buildSystemPrompt(toolsDescription, this.config.systemPrompt);
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-
-    // 如果 ContextManager 中有历史对话，注入到当前会话
-    if (contextManager && contextManager.length > 0 && this.config.injectHistory) {
-      const conversation = contextManager.getConversation();
-      for (const msg of conversation) {
-        messages.push(msg as Message);
-      }
-    }
-
-    // 用户输入
-    messages.push({ role: 'user', content: userInput });
+    this._initRunState(userInput, '');
+    const messages = this._prepareMessages(userInput);
 
     // 2. ReAct 循环
     let finalAnswer: string | null = null;
@@ -398,36 +362,8 @@ export class LoopEngine {
    *   }
    */
   async *runStream(userInput: string): AsyncGenerator<string> {
-    // 重置状态
-    this.state = this._createInitialState();
-    this._retryCount = 0;
-    this._abortController = new AbortController();
-    this.state.status = 'thinking';
-
-    this.log(`🚀 开始执行任务（流式）: "${userInput.slice(0, 80)}${userInput.length > 80 ? '...' : ''}"`);
-
-    // 1. 准备消息列表
-    const messages: Message[] = [];
-    const contextManager = this.config.contextManager;
-    if (contextManager && contextManager.length > 0) {
-      const ctxMessages = contextManager.getMessages();
-      for (const msg of ctxMessages) {
-        messages.push(msg as Message);
-      }
-    } else {
-      const toolsDescription = buildToolsDescription(this.tools);
-      const systemPrompt = buildSystemPrompt(toolsDescription, this.config.systemPrompt);
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-
-    if (contextManager && contextManager.length > 0 && this.config.injectHistory) {
-      const conversation = contextManager.getConversation();
-      for (const msg of conversation) {
-        messages.push(msg as Message);
-      }
-    }
-
-    messages.push({ role: 'user', content: userInput });
+    this._initRunState(userInput, '(流式)');
+    const messages = this._prepareMessages(userInput);
 
     // 2. ReAct 循环（思考步骤用非流式，最终回答用流式）
     while (this.state.step < this.config.maxSteps) {
@@ -677,6 +613,63 @@ export class LoopEngine {
    */
   getState(): Readonly<LoopState> {
     return { ...this.state, history: [...this.state.history] };
+  }
+
+  // ============================================================
+  //  run() / runStream() 共享辅助方法
+  // ============================================================
+
+  /**
+   * 初始化运行状态（run/runStream 共用）
+   *
+   * 重置 state、清除中断标志、创建新的 AbortController。
+   */
+  private _initRunState(userInput: string, mode: string): void {
+    this.state = this._createInitialState();
+    this._retryCount = 0;
+    this._interrupted = false;
+    this._abortController = new AbortController();
+    this.state.status = 'thinking';
+
+    const preview = userInput.slice(0, 80) + (userInput.length > 80 ? '...' : '');
+    this.log(`🚀 开始执行任务${mode}: "${preview}"`);
+  }
+
+  /**
+   * 准备消息列表（run/runStream 共用）
+   *
+   * 根据 injectHistory 配置从 ContextManager 恢复上下文，
+   * 确保系统提示词存在，并添加用户输入。
+   */
+  private _prepareMessages(userInput: string): Message[] {
+    const messages: Message[] = [];
+
+    const contextManager = this.config.contextManager;
+    if (contextManager && contextManager.length > 0) {
+      if (this.config.injectHistory) {
+        // 交互模式：只注入历史对话（不含系统消息）
+        const conversation = contextManager.getConversation();
+        for (const msg of conversation) {
+          messages.push(msg as Message);
+        }
+      } else {
+        // 一次性任务模式：恢复完整上下文
+        const ctxMessages = contextManager.getMessages();
+        for (const msg of ctxMessages) {
+          messages.push(msg as Message);
+        }
+      }
+    }
+
+    // 确保系统提示词存在
+    if (messages.length === 0 || messages[0].role !== 'system') {
+      const toolsDescription = buildToolsDescription(this.tools);
+      const systemPrompt = buildSystemPrompt(toolsDescription, this.config.systemPrompt);
+      messages.unshift({ role: 'system', content: systemPrompt });
+    }
+
+    messages.push({ role: 'user', content: userInput });
+    return messages;
   }
 
   /**

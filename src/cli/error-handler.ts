@@ -180,6 +180,7 @@ function formatError(error: AgentError): string {
 export function handleError(error: unknown): never {
     // 如果是 AgentError，格式化输出
     if (error instanceof AgentError) {
+        reportError(error); // 上报到监控服务（如已配置）
         console.log(pc.red(formatError(error)));
         process.exit(error.code);
     }
@@ -196,6 +197,7 @@ export function handleError(error: unknown): never {
             cause: error,
             showStack: true,
         });
+        reportError(agentError); // 上报到监控服务（如已配置）
         console.log(pc.red(formatError(agentError)));
         process.exit(agentError.code);
     }

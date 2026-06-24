@@ -61,6 +61,8 @@ export interface LLMClientConfig {
   host?: string;
   /** 初始化时是否进行健康检查，默认 false */
   healthCheck?: boolean;
+  /** 从 ConfigManager 创建时设为 true，禁止回退到原始环境变量（避免绕过加密） */
+  skipEnvFallback?: boolean;
 }
 
 // ============================================================
@@ -281,6 +283,8 @@ export async function createLLMClientFromConfig(
     baseUrl: baseUrl ?? undefined,
     host: finalHost,
     healthCheck: overrides?.healthCheck,
+    // 从 ConfigManager 创建时，不回退到原始环境变量（避免绕过加密）
+    skipEnvFallback: true,
   });
 
   info(`✅ 从配置创建 LLM 客户端: ${provider} (${finalModel})`);
@@ -310,9 +314,11 @@ export async function createLLMClientFromConfig(
  * 根据 Provider 构造对应的客户端实例
  */
 function _buildClient(provider: ProviderType, config: LLMClientConfig): ILLMClient {
+  const skipEnv = config.skipEnvFallback === true;
+
   switch (provider) {
     case 'deepseek': {
-      const apiKey = config.apiKey ?? process.env.DEEPSEEK_API_KEY ?? '';
+      const apiKey = config.apiKey ?? (skipEnv ? '' : process.env.DEEPSEEK_API_KEY) ?? '';
       if (!apiKey) {
         throw new Error('DeepSeek 需要 API Key，请设置 DEEPSEEK_API_KEY 环境变量');
       }
@@ -323,7 +329,7 @@ function _buildClient(provider: ProviderType, config: LLMClientConfig): ILLMClie
     }
 
     case 'openai': {
-      const apiKey = config.apiKey ?? process.env.OPENAI_API_KEY ?? '';
+      const apiKey = config.apiKey ?? (skipEnv ? '' : process.env.OPENAI_API_KEY) ?? '';
       if (!apiKey) {
         throw new Error('OpenAI 需要 API Key，请设置 OPENAI_API_KEY 环境变量');
       }

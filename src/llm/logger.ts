@@ -1,73 +1,33 @@
 /**
- * logger.ts - LLM 模块专用日志
+ * logger.ts - LLM 模块日志
  *
- * 支持环境变量控制日志级别：
- *   SMARTAGENT_LOG_LEVEL=debug  （显示所有日志）
- *   SMARTAGENT_LOG_LEVEL=info   （显示信息，默认）
- *   SMARTAGENT_LOG_LEVEL=warn   （只显示警告和错误）
- *   SMARTAGENT_LOG_LEVEL=error  （只显示错误）
+ * 基于统一日志核心 logger-core，使用 LLM 模块名前缀。
+ * 与 CLI 模块共用 SMARTAGENT_LOG_LEVEL 环境变量控制级别。
  *
  * 使用方式：
- *   import { llmLogger, debug, info, warn, error } from './logger.js';
+ *   import { debug, info, warn, error } from './logger.js';
  *   info('连接成功');
  *   debug('请求详情', { body });
  */
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+import { createLogger, setLogLevel, getLogLevel, type LogLevel } from '../utils/logger-core.js';
 
-let currentLevel: LogLevel =
-  (process.env.SMARTAGENT_LOG_LEVEL as LogLevel) ?? 'info';
-
-const LEVELS: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
-};
-
-function shouldLog(level: LogLevel): boolean {
-  return LEVELS[level] >= LEVELS[currentLevel];
-}
-
-function formatMessage(prefix: string, ...args: unknown[]): void {
-  const timestamp = new Date().toISOString().slice(11, 19); // HH:mm:ss
-  console.error(`[${timestamp}] ${prefix}`, ...args);
-}
+/** LLM 模块专用 Logger 实例 */
+const _llmLogger = createLogger('LLM');
 
 export const llmLogger = {
-  /** 动态切换日志级别 */
   setLevel(level: LogLevel): void {
-    currentLevel = level;
+    setLogLevel(level);
   },
 
-  /** 获取当前日志级别 */
   getLevel(): LogLevel {
-    return currentLevel;
+    return getLogLevel();
   },
 
-  debug(...args: unknown[]): void {
-    if (shouldLog('debug')) {
-      formatMessage('🔍 [LLM-DEBUG]', ...args);
-    }
-  },
-
-  info(...args: unknown[]): void {
-    if (shouldLog('info')) {
-      formatMessage('ℹ️  [LLM-INFO]', ...args);
-    }
-  },
-
-  warn(...args: unknown[]): void {
-    if (shouldLog('warn')) {
-      formatMessage('⚠️  [LLM-WARN]', ...args);
-    }
-  },
-
-  error(...args: unknown[]): void {
-    if (shouldLog('error')) {
-      formatMessage('❌ [LLM-ERROR]', ...args);
-    }
-  },
+  debug: _llmLogger.debug.bind(_llmLogger),
+  info: _llmLogger.info.bind(_llmLogger),
+  warn: _llmLogger.warn.bind(_llmLogger),
+  error: _llmLogger.error.bind(_llmLogger),
 };
 
 /** 快捷函数 */

@@ -553,6 +553,12 @@ export function registerAdvancedCommands(program: Command): void {
                 // 安装 Tab 自动补全（增强版）
                 setupAutocomplete(rl, enhancedChatCompleter);
 
+                // 预创建 LLM 客户端 + 工具注册表（缓存复用，避免每轮重建）
+                const chatLLM = await createLLMClientFromConfig(
+                    model ? { model } : undefined,
+                );
+                const chatTools = createDefaultToolRegistry();
+
                 // 交互循环
                 for await (const rawLine of rl) {
                     const line = rawLine.trim();
@@ -650,11 +656,7 @@ export function registerAdvancedCommands(program: Command): void {
                         ctxTokens: ctx.totalTokens,
                     });
 
-                    // 创建 LLM 客户端 + Loop 引擎
-                    const chatLLM = await createLLMClientFromConfig(
-                        model ? { model } : undefined,
-                    );
-                    const chatTools = createDefaultToolRegistry();
+                    // 创建 Loop 引擎（每次对话新建，因状态会随 run 改变）
                     const chatEngine = new LoopEngine(chatLLM, chatTools, {
                         maxSteps: 10,
                         systemPrompt: options.systemPrompt,

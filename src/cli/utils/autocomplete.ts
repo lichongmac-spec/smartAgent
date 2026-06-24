@@ -229,7 +229,7 @@ export const modelCompleter: Completer = (line: string): CompletionItem[] => {
     const models: CompletionItem[] = [
         { value: 'deepseek-v4-flash', description: 'DeepSeek V4 Flash (推荐)' },
         { value: 'deepseek-v4-pro', description: 'DeepSeek V4 Pro' },
-        { value: 'deepseek-v4-flash', description: 'DeepSeek V3 (⚠ 2026/07/24 弃用)' },
+        { value: 'deepseek-chat', description: 'DeepSeek V3 (⚠ 2026/07/24 弃用)' },
         { value: 'deepseek-reasoner', description: 'DeepSeek R1 (⚠ 2026/07/24 弃用)' },
         { value: 'gpt-4o', description: 'OpenAI GPT-4o' },
         { value: 'gpt-4o-mini', description: 'OpenAI GPT-4o Mini' },

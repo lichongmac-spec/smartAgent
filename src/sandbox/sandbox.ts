@@ -104,22 +104,29 @@ export class Sandbox {
 
   /**
    * 带超时的异步执行包装
+   *
+   * 使用 Promise.race + finally 确保超时定时器在所有路径（成功/失败/超时）
+   * 都能被正确清理，避免定时器泄漏。
    */
   private withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timer = setTimeout(() => {
+        timer = undefined;
         reject(new Error(`操作超时（${timeoutMs}ms）`));
       }, timeoutMs);
-      promise
-        .then((result) => {
-          clearTimeout(timer);
-          resolve(result);
-        })
-        .catch((err) => {
-          clearTimeout(timer);
-          reject(err);
-        });
     });
+
+    // 无论 promise 成功、失败还是超时，finally 都会清理定时器
+    const wrappedPromise = promise.finally(() => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    });
+
+    return Promise.race([wrappedPromise, timeoutPromise]);
   }
 
   // ── 文件操作 ──

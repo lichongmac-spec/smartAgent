@@ -408,13 +408,19 @@ await describe('中断和回调', async () => {
 
   await testAsync('interrupt - 中断执行', async () => {
     const engine = new LoopEngine(mockLLM, tools, { verbose: false });
+    // 在 run() 启动后立即中断（模拟运行时取消）
+    const runPromise = engine.run('测试中断');
     engine.interrupt();
 
-    const result = await engine.run('测试中断');
+    const result = await runPromise;
     assertOk(result.includes('中断'), '应提示已中断');
 
     const state = engine.getState();
     assertEq(state.status, 'error', '中断后状态应为 error');
+
+    // 验证中断后可以重新 run()（_interrupted 已重置）
+    const result2 = await engine.run('再次测试');
+    assertOk(result2.length > 0, '重新 run 应正常执行');
   });
 
   await testAsync('onStep 回调', async () => {

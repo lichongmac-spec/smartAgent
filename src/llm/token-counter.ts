@@ -205,8 +205,10 @@ export class TokenCounter {
 
 /**
  * 判断是否为 CJK 字符（中日韩统一表意文字）
+ *
+ * 包含：CJK 统一汉字、扩展 A/B、兼容汉字、平假名、片假名、韩文
  */
-function isCJK(char: string): boolean {
+export function isCJK(char: string): boolean {
   const code = char.charCodeAt(0);
   return (
     (code >= 0x4E00 && code <= 0x9FFF) || // CJK 统一汉字
@@ -214,7 +216,8 @@ function isCJK(char: string): boolean {
     (code >= 0x20000 && code <= 0x2A6DF) || // CJK 扩展 B
     (code >= 0xF900 && code <= 0xFAFF) || // CJK 兼容汉字
     (code >= 0x3040 && code <= 0x309F) || // 平假名
-    (code >= 0x30A0 && code <= 0x30FF) // 片假名
+    (code >= 0x30A0 && code <= 0x30FF) || // 片假名
+    (code >= 0xAC00 && code <= 0xD7AF) // 韩文
   );
 }
 

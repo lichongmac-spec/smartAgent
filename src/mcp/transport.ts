@@ -299,6 +299,7 @@ export class HttpTransport implements MCPTransport {
   private sessionId: string | null = null;
   private messageEndpoint: string | null = null;
   private sseController: AbortController | null = null;
+  private sseReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private responseQueue: JsonRpcMessage[] = [];
   private responseResolve: ((value: JsonRpcMessage) => void) | null = null;
   private _isStarted = false;
@@ -338,7 +339,7 @@ export class HttpTransport implements MCPTransport {
     }
 
     // 在后台读取 SSE 事件
-    const reader = response.body.getReader();
+    this.sseReader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -346,7 +347,7 @@ export class HttpTransport implements MCPTransport {
     const readSSE = async () => {
       try {
         while (true) {
-          const { done, value } = await reader.read();
+          const { done, value } = await this.sseReader!.read();
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
@@ -375,13 +376,18 @@ export class HttpTransport implements MCPTransport {
             }
           }
         }
-      } catch {
-        // SSE 流关闭
+      } catch (err) {
+        // SSE 流关闭或读取错误
+        if (err instanceof Error && err.name !== 'AbortError') {
+          console.error('[MCP HttpTransport] SSE 读取异常:', err.message);
+        }
       }
     };
 
-    // 不 await，让 SSE 读者在后台运行
-    readSSE().catch(() => {});
+    // 后台运行 SSE 读取，捕获异常
+    readSSE().catch((err) => {
+      console.error('[MCP HttpTransport] SSE 监听器异常退出:', err instanceof Error ? err.message : String(err));
+    });
 
     // 等待获取消息端点（最多 5 秒）
     const startTime = Date.now();
@@ -440,6 +446,11 @@ export class HttpTransport implements MCPTransport {
   }
 
   async close(): Promise<void> {
+    // 取消 SSE 流读取器，释放连接
+    if (this.sseReader) {
+      try { await this.sseReader.cancel(); } catch { /* 忽略取消失败 */ }
+      this.sseReader = null;
+    }
     if (this.sseController) {
       this.sseController.abort();
       this.sseController = null;

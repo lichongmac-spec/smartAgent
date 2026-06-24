@@ -53,9 +53,9 @@ export class ContextManager {
   /** Token 计数器 */
   private tokenCounter: TokenCounter;
 
-  // 粗略 token 估算系数：英文 ~4 字符/token，中文 ~1.5 字符/token
-  private static readonly CHARS_PER_TOKEN_EN = 4;
-  private static readonly CHARS_PER_TOKEN_CN = 1.5;
+  /** totalTokens 缓存：-1 表示需要重新计算 */
+  private _totalTokensCache = -1;
+  private _totalTokensDirty = true;
 
   // ============================================================
   //  构造函数（创建管理器）
@@ -146,6 +146,7 @@ export class ContextManager {
   addUserMessage(content: string): void {
     this.messages.push({ role: 'user', content });
     this._updatedAt = new Date();
+    this._totalTokensDirty = true;
   }
 
   /**
@@ -161,6 +162,7 @@ export class ContextManager {
   addAssistantMessage(content: string): void {
     this.messages.push({ role: 'assistant', content });
     this._updatedAt = new Date();
+    this._totalTokensDirty = true;
   }
 
   /**
@@ -176,6 +178,7 @@ export class ContextManager {
   addSystemMessage(content: string): void {
     this.messages.push({ role: 'system', content });
     this._updatedAt = new Date();
+    this._totalTokensDirty = true;
   }
 
   /**
@@ -193,6 +196,7 @@ export class ContextManager {
       ...(toolCallId ? { tool_call_id: toolCallId } : {}),
     });
     this._updatedAt = new Date();
+    this._totalTokensDirty = true;
   }
 
   // ============================================================
@@ -264,50 +268,6 @@ export class ContextManager {
   }
 
   // ============================================================
-  //  Token 估算
-  // ============================================================
-
-  /**
-   * 粗略估算单条文本的 token 数
-   *
-   * 启发式：
-   * - 英文/数字/符号 ≈ 4 字符/token
-   * - 中文/日文/韩文 ≈ 1.5 字符/token
-   * - 以中文字符占比 > 30% 判断为"偏中文文本"
-   */
-  estimateTokens(text: string): number {
-    if (!text) return 0;
-
-    let cnChars = 0;
-    let total = 0;
-
-    for (const ch of text) {
-      total++;
-      const code = ch.codePointAt(0) ?? 0;
-      if (
-        (code >= 0x4E00 && code <= 0x9FFF) ||   // CJK 统一汉字
-        (code >= 0x3400 && code <= 0x4DBF) ||   // CJK 扩展 A
-        (code >= 0x20000 && code <= 0x2A6DF) || // CJK 扩展 B
-        (code >= 0x3040 && code <= 0x309F) ||   // 平假名
-        (code >= 0x30A0 && code <= 0x30FF) ||   // 片假名
-        (code >= 0xAC00 && code <= 0xD7AF)      // 韩文
-      ) {
-        cnChars++;
-      }
-    }
-
-    if (total === 0) return 0;
-
-    const cnRatio = cnChars / total;
-
-    if (cnRatio > 0.3) {
-      return Math.ceil(total / ContextManager.CHARS_PER_TOKEN_CN);
-    } else {
-      return Math.ceil(total / ContextManager.CHARS_PER_TOKEN_EN);
-    }
-  }
-
-  // ============================================================
   //  统计信息
   // ============================================================
 
@@ -349,10 +309,17 @@ export class ContextManager {
   }
 
   /**
-   * 估算整个对话的 Token 数
+   * 估算整个对话的 Token 数（带增量缓存）
+   *
+   * 首次访问或消息变更后触发完整计算；后续访问直接返回缓存值。
    */
   get totalTokens(): number {
-    return this.tokenCounter.countMessages(this.messages);
+    if (!this._totalTokensDirty && this._totalTokensCache >= 0) {
+      return this._totalTokensCache;
+    }
+    this._totalTokensCache = this.tokenCounter.countMessages(this.messages);
+    this._totalTokensDirty = false;
+    return this._totalTokensCache;
   }
 
   // ============================================================
@@ -377,6 +344,7 @@ export class ContextManager {
       this.messages = [];
     }
     this._updatedAt = new Date();
+    this._totalTokensDirty = true;
   }
 
   // ============================================================
@@ -462,6 +430,7 @@ export class ContextManager {
         ...nonSystemMessages.slice(actualKeepFrom),
       ];
       this._updatedAt = new Date();
+      this._totalTokensDirty = true;
     }
 
     return removed;

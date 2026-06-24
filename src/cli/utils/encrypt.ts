@@ -19,14 +19,15 @@
  *   // => 'sk-plain-text'
  *
  * 安全模型：
- *   - 加密密钥由 PBKDF2 从机器 hostname + 固定盐值派生
+ *   - 加密密钥由 PBKDF2 从 AGENT_ENCRYPTION_KEY（环境变量）或机器 hostname + 固定盐值派生
+ *   - 设置 AGENT_ENCRYPTION_KEY 可跨机器共享密钥（容器/多机部署推荐）
  *   - 每次加密使用随机 IV（12 字节）
  *   - GCM 模式提供认证加密（防篡改）
  *   - 格式: $ENC$:<base64(iv + authTag + ciphertext)>
  *
  * 局限性：
- *   - 更换机器后无法解密（需重新配置 apiKey）
- *   - 不适用于需要跨设备共享配置的场景
+ *   - 未设置 AGENT_ENCRYPTION_KEY 时，更换机器后无法解密（需重新配置 apiKey）
+ *   - 不适用于需要跨设备共享配置且未设 ENCRYPTION_KEY 的场景
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, pbkdf2Sync } from 'crypto';
@@ -62,16 +63,19 @@ const ENC_PREFIX = '$ENC$:';
 // ============================================================
 
 /**
- * 从机器标识派生 AES-256 密钥
+ * 从机器标识或用户提供的密钥派生 AES-256 密钥
  *
- * 使用 PBKDF2-SHA256 从 hostname + 固定盐值派生 256 位密钥。
- * 更换机器后 hostname 变化 → 密钥不同 → 无法解密旧配置。
+ * 优先级：
+ *   1. 环境变量 AGENT_ENCRYPTION_KEY（用户提供，跨机器共享）
+ *   2. hostname 派生（绑定当前设备，容器重启可能丢失）
+ *
+ * 使用 PBKDF2-SHA256 从种子 + 固定盐值派生 256 位密钥。
  *
  * @returns 32 字节的密钥 Buffer
  */
 function deriveKey(): Buffer {
-    const machineId = hostname();
-    return pbkdf2Sync(machineId, SALT, ITERATIONS, KEY_LENGTH, 'sha256');
+  const seed = process.env.AGENT_ENCRYPTION_KEY || hostname();
+  return pbkdf2Sync(seed, SALT, ITERATIONS, KEY_LENGTH, 'sha256');
 }
 
 // ============================================================

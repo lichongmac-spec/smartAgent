@@ -186,9 +186,14 @@ export class MockLLMClient implements ILLMClient {
       throw Object.assign(new Error('Mock 请求被取消'), { name: 'AbortError' });
     }
 
-    // 支持 timeout 模拟
+    // 支持 timeout 模拟（过程中可被 AbortSignal 中断）
     const timeout = options.timeout ?? 60000;
-    await this.simulateDelay(Math.min(50, timeout));
+    await this.simulateDelay(Math.min(50, timeout), options.signal);
+
+    // 延迟后再次检查（中断可能在延迟期间发生）
+    if (options.signal?.aborted) {
+      throw Object.assign(new Error('Mock 请求被取消'), { name: 'AbortError' });
+    }
 
     const lastUserMessage = this.getLastUserMessage(messages);
 
@@ -354,7 +359,23 @@ export class MockLLMClient implements ILLMClient {
       : '';
   }
 
-  private simulateDelay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  /**
+   * 模拟网络延迟（支持 AbortSignal 中断）
+   */
+  private simulateDelay(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, ms);
+      if (signal) {
+        const onAbort = () => {
+          clearTimeout(timer);
+          reject(Object.assign(new Error('Mock 请求被取消'), { name: 'AbortError' }));
+        };
+        if (signal.aborted) {
+          onAbort();
+        } else {
+          signal.addEventListener('abort', onAbort, { once: true });
+        }
+      }
+    });
   }
 }

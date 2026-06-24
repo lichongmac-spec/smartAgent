@@ -103,18 +103,27 @@ export async function pager(content: string, options: PagerOptions = {}): Promis
     renderPage();
 
     return new Promise((resolve) => {
-        let rawModeSet = false;
-
-        // 启用 raw mode 以捕获键盘事件
+        // 记录原始 raw mode 状态，确保退出时恢复到正确状态
+        let originalRawMode: boolean | undefined = undefined;
         try {
-            if (typeof process.stdin.setRawMode === 'function') {
+            if (typeof process.stdin.setRawMode === 'function' && process.stdin.isTTY) {
+                originalRawMode = (process.stdin as any)._rawMode ?? false;
                 process.stdin.setRawMode(true);
-                rawModeSet = true;
             }
             process.stdin.resume();
         } catch {
             /* ignore - 某些环境不支持 raw mode */
         }
+
+        const restoreRawMode = () => {
+            try {
+                if (typeof process.stdin.setRawMode === 'function' && originalRawMode !== undefined) {
+                    process.stdin.setRawMode(originalRawMode);
+                }
+            } catch {
+                /* ignore */
+            }
+        };
 
         (rl as any).input.on('keypress', (_str: string, key: { name: string; ctrl: boolean }) => {
             if (searchMode) {
@@ -201,9 +210,7 @@ export async function pager(content: string, options: PagerOptions = {}): Promis
 
         rl.on('close', () => {
             // 恢复终端原始模式
-            if (rawModeSet) {
-                try { process.stdin.setRawMode(false); } catch { /* ignore */ }
-            }
+            restoreRawMode();
             resolve();
         });
     });
