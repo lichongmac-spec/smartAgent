@@ -14,6 +14,7 @@ import { registerAdvancedCommands } from './advanced-commands.js';
 import { configManager } from './config-manager.js';
 import { checkNodeVersion, isCI } from './env-check.js';
 import { setupGracefulShutdown } from './error-handler.js';
+import { HeartbeatManager } from '../health/index.js';
 import { configureLogger } from './logger.js';
 import { expandAlias } from './utils/alias.js';
 import { setVerbose } from './utils/debug.js';
@@ -47,13 +48,38 @@ if (startupConfig.provider === 'deepseek' || startupConfig.provider === 'openai'
   }
 }
 
-// ============ 2. 优雅退出 ============
-setupGracefulShutdown({
-    verbose: true,
-    cleanupFns: [],
+// ============ 2. 心跳 & 健康监控 ============
+// 创建心跳管理器（不含 LLM 客户端，内置检查为磁盘+内存）
+// 详细监控在 advanced-commands 中创建 LLM 客户端后动态注册
+const heartbeat = new HeartbeatManager({
+  intervalMs: 60_000,        // 每分钟检查一次
+  failureThreshold: 3,        // 连续 3 次失败才报警
+  recoveryThreshold: 2,       // 连续 2 次成功恢复
+  autoRestart: false,         // 默认不自动重启
+  initialCheck: false,        // 启动时不立即检查（避免阻塞）
 });
 
-// ============ 3. 创建 CLI 主程序 ============
+// 启动心跳
+heartbeat.start();
+
+// 监听健康状态变化
+heartbeat.on('unhealthy', (event) => {
+  console.error(`\n🚨 [心跳] 系统不健康！失败项: ${event.failedChecks.map(c => c.name).join(', ')}`);
+});
+
+heartbeat.on('recovered', () => {
+  console.log(`\n✅ [心跳] 系统已恢复健康`);
+});
+
+// ============ 3. 优雅退出 ============
+setupGracefulShutdown({
+    verbose: true,
+    cleanupFns: [
+        async () => { heartbeat.stop(); },
+    ],
+});
+
+// ============ 4. 创建 CLI 主程序 ============
 const program = new Command();
 
 program
@@ -61,10 +87,10 @@ program
     .description('SmartAgent CLI - 智能助手')
     .version('1.0.0');
 
-// ============ 4. 注册所有命令 ============
+// ============ 5. 注册所有命令 ============
 registerAdvancedCommands(program);
 
-// ============ 5. 解析参数 ============
+// ============ 6. 解析参数 ============
 // 过滤掉 pnpm/npm/yarn 注入的独立 '--'（会被 Commander 误判为 end-of-options）
 // 例如：pnpm cli -- ask "hello" --no-stream
 //       → argv: [node, script, '--', ask, hello, --no-stream]
@@ -75,7 +101,7 @@ const cleanedArgv = process.argv.filter(arg => arg !== '--');
 const expandedArgv = [cleanedArgv[0], cleanedArgv[1], ...expandAlias(cleanedArgv.slice(2))];
 program.parse(expandedArgv);
 
-// ============ 6. 无参数时显示帮助 ============
+// ============ 7. 无参数时显示帮助 ============
 if (!process.argv.slice(2).length) {
     program.outputHelp();
 }
