@@ -13,8 +13,7 @@
  *   const text = await handler.processSSE(response, { onToken: ... });
  */
 
-import { SSEStreamParser, type SSEChunk } from '../context-aware.js';
-import { logger } from '../logger.js';
+import { SSEStreamParser } from '../context-aware.js';
 
 export interface StreamHandlerOptions {
     /** 打字机效果每字符延迟（毫秒），0 = 无延迟直接输出 */

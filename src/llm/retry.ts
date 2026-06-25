@@ -15,7 +15,7 @@
  *   const result = await withRetry(() => client.chat(messages), { maxRetries: 3 });
  */
 
-import { LLMError, isRetryableError } from './errors.js';
+import { LLMError } from './errors.js';
 import { debug, info } from './logger.js';
 import type { RetryConfig } from './types.js';
 

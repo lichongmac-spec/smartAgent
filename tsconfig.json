@@ -21,7 +21,8 @@
     "./node_modules",
     "./dist",
     "./tests",
-    "./debug-llm.ts"
-  ],
-  "$schema": "./.vscode/tsconfig.schema.json"
+    "./electron",
+    "./electron-build",
+    "./scripts"
+  ]
 }

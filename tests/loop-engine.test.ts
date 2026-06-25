@@ -16,7 +16,6 @@ import { createDefaultToolRegistry } from '../src/tools/builtin/index.js';
 import { LoopEngine } from '../src/core/loop-engine.js';
 import { readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import type { LoopState } from '../src/core/types.js';
 
 // 测试用临时文件目录（必须在项目内，受沙箱保护）
 const TEST_TMP = join(process.cwd(), 'test-output');
@@ -30,9 +29,6 @@ let passCount = 0;
 let failCount = 0;
 let testCount = 0;
 
-function assert(cond: boolean, msg: string): void {
-  if (!cond) throw new Error(msg);
-}
 
 function assertEq(a: unknown, b: unknown, msg?: string): void {
   if (JSON.stringify(a) !== JSON.stringify(b)) {
@@ -44,14 +40,6 @@ function assertOk(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg);
 }
 
-async function assertThrows(fn: () => Promise<void>, msg: string): Promise<void> {
-  try {
-    await fn();
-    throw new Error(msg + ' (未抛出错误)');
-  } catch (e) {
-    // 预期抛出错误
-  }
-}
 
 function test(name: string, fn: () => void | Promise<void>): void {
   testCount++;

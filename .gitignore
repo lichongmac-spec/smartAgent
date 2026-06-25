@@ -4,6 +4,7 @@ package-lock.json
 
 # Build output
 dist/
+electron-build/
 
 # Environment
 .env
@@ -42,3 +43,5 @@ test-output/
 .smartagent/
 
 .workbuddy/
+
+.pnpm-store/

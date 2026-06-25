@@ -8,7 +8,7 @@
  */
 
 import { createServer } from 'http';
-import type { IncomingMessage, ServerResponse, Server } from 'http';
+import type { IncomingMessage, Server } from 'http';
 import { WebhookNotifier } from '../src/webhook/index.js';
 import type { WebhookConfig, WebhookPayload } from '../src/webhook/types.js';
 

@@ -41,13 +41,11 @@
  */
 
 import type {
-  JsonRpcMessage,
   JsonRpcRequest,
   JsonRpcResponse,
   JsonRpcError,
   JsonRpcNotification,
   MCPTransport,
-  MCPTool,
   InitializeResult,
   ListToolsResult,
   CallToolResult,
@@ -57,11 +55,9 @@ import type {
   ServerCapabilities,
 } from './types.js';
 import {
-  ErrorCode,
   MCP_VERSION,
   MCPError,
   MCPConnectionError,
-  MCPMethodNotFoundError,
 } from './types.js';
 
 // ================================================================
@@ -290,7 +286,7 @@ export class MCPClient {
     this._log('正在断开连接...');
 
     // 取消所有待处理请求
-    for (const [id, pending] of this._pending) {
+    for (const [, pending] of this._pending) {
       clearTimeout(pending.timer);
       pending.reject(new MCPConnectionError('连接已断开'));
     }
@@ -443,7 +439,7 @@ export class MCPClient {
           this._log(`接收循环错误: ${String(err)}`);
 
           // 拒绝所有待处理请求
-          for (const [id, pending] of this._pending) {
+          for (const [, pending] of this._pending) {
             clearTimeout(pending.timer);
             pending.reject(new MCPConnectionError(`传输错误: ${String(err)}`));
           }

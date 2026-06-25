@@ -69,7 +69,7 @@ async function main() {
       maxSteps: 5,
       verbose: true,
     },
-    (state) => {
+    (_state) => {
       // 步骤回调：每一步完成时触发
     },
   );

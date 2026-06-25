@@ -31,11 +31,12 @@ function teardown(): void {
     try { rmSync(testDir, { recursive: true, force: true }); } catch { /* */ }
 }
 
-const tsxBin = resolve('node_modules/.bin/tsx');
+// Use absolute path for tsx/esm so it works regardless of child process cwd
 const cliEntry = resolve('src/cli/index.ts');
+const tsxEsm = resolve('node_modules/tsx/dist/esm/index.mjs');
 
 function runCli(args: string[]): { stdout: string; stderr: string; code: number | null } {
-    const proc = spawnSync(process.execPath, [tsxBin, cliEntry, ...args], {
+    const proc = spawnSync(process.execPath, ['--import', tsxEsm, cliEntry, ...args], {
         cwd: testDir,
         encoding: 'utf-8',
         timeout: 30_000,
@@ -77,6 +78,7 @@ function test(name: string, fn: () => void): void {
 
 console.log('\n🚀 Agent E2E 流程测试\n');
 
+try {
 setup();
 
 // ---- 配置管理流程 ----
@@ -125,9 +127,7 @@ test('ask --model deepseek-reasoner --no-stream', () => {
 console.log('\n📦 chat 命令');
 test('chat 非交互模式提示', () => {
     const r = runCli(['chat']);
-    const combined = r.stdout + r.stderr;
-    assert(combined.includes('Chat') || combined.includes('终端') || r.code === 0 || true,
-        'chat 至少执行不崩溃');
+        assert(r.code !== null, 'chat 命令可执行（返回了退出码）');
 });
 
 // ============================================================
@@ -175,17 +175,23 @@ console.log('\n📦 错误处理');
 test('test:error --type user 输出错误提示', () => {
     const r = runCli(['test:error', '--type', 'user']);
     const combined = r.stdout + r.stderr;
-    assert(combined.includes('API') || r.code !== 0 || true, '错误命令可执行');
+    // test:error 命令应能正常执行，输出包含错误相关信息或返回非零退出码
+    assert(combined.length > 0 || r.code !== 0, '错误命令有输出或返回非零码');
 });
 
 test('test:error --type network 输出网络错误', () => {
     const r = runCli(['test:error', '--type', 'network']);
     const combined = r.stdout + r.stderr;
-    assert(combined.includes('网络') || r.code !== 0 || true, '网络错误可执行');
+    // test:error network 应输出网络相关错误或返回非零退出码
+    assert(combined.length > 0 || r.code !== 0, '网络错误有输出或返回非零码');
 });
 
 // ---- 清理 ----
 teardown();
+} finally {
+    // 确保清理（即使 runCli 抛出异常）
+    teardown();
+}
 
 console.log(`\n📊 E2E 测试结果: ${passCount}/${testCount} 通过`);
 if (failCount > 0) {

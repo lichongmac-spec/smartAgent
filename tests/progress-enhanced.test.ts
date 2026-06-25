@@ -16,8 +16,6 @@
 import {
     runEnhancedTasks,
     type EnhancedTaskDef,
-    type EnhancedRunOptions,
-    type EnhancedTaskControl,
     type TaskContext,
 } from '../src/cli/utils/progress-enhanced.js';
 
@@ -129,7 +127,7 @@ await testAsync('runEnhancedTasks — 分组任务', async () => {
         },
     ];
 
-    const ctx = await runEnhancedTasks(tasks, { ci: true, showGroups: true });
+    await runEnhancedTasks(tasks, { ci: true, showGroups: true });
     assert(completed.includes('download'), '下载任务应执行');
     assert(completed.includes('check'), '检查任务应执行');
     assert(completed.includes('other'), '其他任务应执行');

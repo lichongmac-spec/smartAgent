@@ -52,8 +52,6 @@ import {
 import type {
   JsonRpcMessage,
   JsonRpcRequest,
-  JsonRpcResponse,
-  JsonRpcError,
   MCPTransport,
 } from './types.js';
 

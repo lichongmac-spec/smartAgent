@@ -9,7 +9,6 @@
 
 import { withRetry, resolveRetryConfig, withOptionalRetry } from '../src/llm/retry.js';
 import { LLMError, NetworkError, AuthenticationError } from '../src/llm/errors.js';
-import type { RetryConfig } from '../src/llm/types.js';
 
 let passCount = 0;
 let failCount = 0;

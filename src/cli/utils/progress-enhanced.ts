@@ -20,7 +20,7 @@
 import { Listr, type ListrTask } from 'listr2';
 import { isCI } from '../env-check.js';
 import { getLoggerConfig } from '../logger.js';
-import type { TaskContext, TaskControl as BaseTaskControl, TaskDef } from './progress.js';
+import type { TaskContext, TaskControl as BaseTaskControl } from './progress.js';
 
 export type { TaskContext };
 
@@ -84,7 +84,7 @@ export async function runEnhancedTasks(
             // 分组作为父任务
             listrTasks.push({
                 title: `📁 ${groupName}`,
-                task: async (ctx, task) => {
+                task: async (_ctx, task) => {
                     const subTasks = groupTasks.map((t) => buildEnhancedTask(t));
                     return task.newListr(subTasks, {
                         concurrent: concurrent ? (concurrency > 0 ? concurrency : true) : false,

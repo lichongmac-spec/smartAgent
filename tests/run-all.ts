@@ -22,10 +22,7 @@ const files = readdirSync(testDir)
     .filter((f) => f.endsWith('.test.ts'))
     .sort();
 
-const node = process.execPath;
 const tsx = resolve('node_modules/.bin/tsx');
-// fallback：用 process.execPath --import tsx
-const useTsx = `${tsx}`;
 
 interface Result {
     name: string;

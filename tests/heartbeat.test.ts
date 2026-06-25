@@ -365,7 +365,7 @@ async function main(): Promise<void> {
     const mockClient = {
       healthCheck: async () => true,
     };
-    const hb = new HeartbeatManager({
+    new HeartbeatManager({
       llmClient: mockClient as any,
       initialCheck: false,
       disabledChecks: ['disk', 'memory'], // 只启用 LLM
@@ -392,10 +392,6 @@ async function main(): Promise<void> {
     let llmCalled = false;
     let diskCalled = false;
     let memCalled = false;
-
-    const mockClient = {
-      healthCheck: async () => { llmCalled = true; return true; },
-    };
 
     // 重写内置检查创建函数（通过不同的方式—这里直接用自定义检查观察）
     const hb = new HeartbeatManager({

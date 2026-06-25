@@ -7,7 +7,6 @@
  */
 
 import { MockLLMClient } from '../src/llm/mock-client.js';
-import type { ILLMClient } from '../src/llm/types.js';
 
 let passCount = 0;
 let failCount = 0;

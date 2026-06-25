@@ -19,7 +19,6 @@ import {
     filePathCompleter,
     configKeyCompleter,
     commonPrefix,
-    type CompletionItem,
 } from '../src/cli/utils/autocomplete.js';
 
 // ============================================================
@@ -49,9 +48,6 @@ function assertOk(value: unknown, msg?: string) {
     assert.ok(value, msg);
 }
 
-function assertDeepEqual<T>(actual: T, expected: T, msg?: string) {
-    assert.deepStrictEqual(actual, expected, msg);
-}
 
 // ============================================================
 //  测试 — commonPrefix

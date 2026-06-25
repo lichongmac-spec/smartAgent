@@ -56,22 +56,6 @@ function c<T extends keyof typeof pc>(
     return fn(String(text ?? ''));
 }
 
-// 便捷颜色函数
-const color = {
-    dim: (s: string | number | null | undefined) => c('dim', s),
-    blue: (s: string | number | null | undefined) => c('blue', s),
-    green: (s: string | number | null | undefined) => c('green', s),
-    yellow: (s: string | number | null | undefined) => c('yellow', s),
-    red: (s: string | number | null | undefined) => c('red', s),
-    gray: (s: string | number | null | undefined) => c('gray', s),
-    cyan: (s: string | number | null | undefined) => c('cyan', s),
-    magenta: (s: string | number | null | undefined) => c('magenta', s),
-    bold: (s: string | number | null | undefined) => {
-        if (_noColor) return String(s ?? '');
-        return pc.bold(String(s ?? ''));
-    },
-};
-
 // ============================================================
 //  配置注入（由入口 index.ts 调用）
 // ============================================================

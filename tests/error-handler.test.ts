@@ -43,20 +43,6 @@ function test(name: string, fn: () => void | Promise<void>) {
     }
 }
 
-function expectError(fn: () => void, expectedMessage: string): boolean {
-    try {
-        fn();
-        console.log(pc.red('  ❌ 预期抛出错误，但没有抛出'));
-        return false;
-    } catch (error) {
-        if (error instanceof Error && error.message.includes(expectedMessage)) {
-            console.log(pc.green(`  ✅ 正确抛出: ${error.message}`));
-            return true;
-        }
-        console.log(pc.red(`  ❌ 错误消息不匹配: ${error}`));
-        return false;
-    }
-}
 
 // ============================================================
 //  测试用例

@@ -46,11 +46,6 @@ function assert(condition: boolean, msg: string): void {
     if (!condition) throw new Error(msg);
 }
 
-function assertEq<T>(actual: T, expected: T, msg: string): void {
-    if (actual !== expected) {
-        throw new Error(`${msg} - 期望: ${JSON.stringify(expected)}, 实际: ${JSON.stringify(actual)}`);
-    }
-}
 
 function test(name: string, fn: () => void): void {
     testCount++;

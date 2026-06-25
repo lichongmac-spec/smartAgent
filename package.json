@@ -13,13 +13,22 @@
     "test:e2e": "tsx tests/e2e/agent-flow.test.ts",
     "test:agent": "pnpm test:e2e && tsx tests/integration/tool-call.test.ts",
     "test:alias": "tsx tests/alias.test.ts",
+    "test:electron": "vitest run --config vitest.config.ts",
+    "test:full": "pnpm test && pnpm test:electron",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli/index.js",
     "cli": "tsx src/cli/index.ts",
     "dev": "nodemon --watch src --ext ts --exec tsx src/cli/index.ts",
     "debug": "node --inspect-brk -r tsx/cjs src/cli/index.ts",
-    "debug:start": "tsx --inspect-brk src/cli/index.ts"
+    "debug:start": "tsx --inspect-brk src/cli/index.ts",
+    "electron:build:renderer": "vite build --config electron/vite.config.ts",
+    "electron:build:main": "tsc -p tsconfig.electron.json",
+    "electron:build": "pnpm electron:build:main && pnpm electron:build:renderer",
+    "electron:dev": "concurrently \"vite --config electron/vite.config.ts\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:start": "pnpm electron:build && electron .",
+    "electron:package": "electron-forge package",
+    "electron:make": "electron-forge make"
   },
   "keywords": [
     "cli",
@@ -32,10 +41,27 @@
     "node": ">=18"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^25.9.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "autoprefixer": "^10.5.2",
+    "concurrently": "^10.0.3",
+    "electron": "^42.5.0",
+    "jsdom": "^29.1.1",
     "nodemon": "^3.1.14",
+    "postcss": "^8.5.15",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^3.4.19",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9",
+    "wait-on": "^9.0.10"
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",

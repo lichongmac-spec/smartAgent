@@ -33,7 +33,7 @@ import { encrypt, decrypt } from './utils/encrypt.js';
 // ============================================================
 const ProviderEnum = z.enum(['deepseek', 'openai', 'ollama', 'mock']);
 
-const ConfigSchema = z.object({
+export const ConfigSchema = z.object({
   // ===== LLM Provider =====
   /** LLM Provider: 'deepseek' | 'openai' | 'ollama' | 'mock' */
   provider: ProviderEnum.default('ollama'),
@@ -256,7 +256,9 @@ export class ConfigManager {
           );
         });
         console.error('💡 请检查配置文件或环境变量');
-        process.exit(1);
+        // 非 CLI 场景（如 Electron 主进程）不应直接退出进程
+        // 而是抛出错误让调用方决定如何处理
+        throw new Error(`配置校验失败: ${error.message}`);
       }
       throw error;
     }
@@ -299,7 +301,7 @@ export class ConfigManager {
       }
       // 写入磁盘前加密敏感字段
       const diskConfig = { ...this.config };
-      if (diskConfig.apiKey) {
+      if (diskConfig.apiKey !== undefined && diskConfig.apiKey !== null) {
         diskConfig.apiKey = encrypt(diskConfig.apiKey);
       }
       writeFileSync(filePath, JSON.stringify(diskConfig, null, 2));

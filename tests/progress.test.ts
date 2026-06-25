@@ -15,7 +15,6 @@ import { strict as assert } from 'assert';
 import {
     runTasks,
     type TaskDef,
-    type TaskContext,
 } from '../src/cli/utils/progress.js';
 
 // ============================================================
@@ -322,7 +321,7 @@ console.log('━'.repeat(46));
 console.log('');
 
 // 注册的测试都在上面了，现在执行
-for (const { name, run } of testQueue) {
+for (const { run } of testQueue) {
     await run();
 }
 

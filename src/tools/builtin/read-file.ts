@@ -6,7 +6,7 @@
 
 import type { ToolExecutor } from '../registry.js';
 import { readFileSync } from 'fs';
-import { resolveSandboxPath, SANDBOX_ERROR } from '../sandbox.js';
+import { resolveSandboxPath } from '../sandbox.js';
 
 /** 工具定义 */
 export const READ_FILE_DEFINITION = {

@@ -39,7 +39,7 @@ import type {
   JsonRpcMessage,
   MCPTransport,
 } from './types.js';
-import { JSONRPC_VERSION, MCPError, MCPConnectionError } from './types.js';
+import { JSONRPC_VERSION, MCPConnectionError } from './types.js';
 
 // ================================================================
 //  通用工具函数
@@ -296,7 +296,6 @@ interface SSEEvent {
 export class HttpTransport implements MCPTransport {
   readonly name: string;
   private config: Required<HttpTransportConfig>;
-  private sessionId: string | null = null;
   private messageEndpoint: string | null = null;
   private sseController: AbortController | null = null;
   private sseReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
@@ -455,7 +454,6 @@ export class HttpTransport implements MCPTransport {
       this.sseController.abort();
       this.sseController = null;
     }
-    this.sessionId = null;
     this.messageEndpoint = null;
     this.responseQueue = [];
     this._isStarted = false;
@@ -468,7 +466,6 @@ export class HttpTransport implements MCPTransport {
   } {
     const events: SSEEvent[] = [];
     let currentEvent: SSEEvent = { event: '', data: '' };
-    let pos = 0;
     const lines = buffer.split('\n');
 
     // 找到最后一个完整事件的位置

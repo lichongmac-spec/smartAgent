@@ -11,7 +11,7 @@
 
 import * as readline from 'readline';
 import { Command } from 'commander';
-import { configManager, type ConfigKey } from './config-manager.js';
+import { configManager, ConfigSchema, type ConfigKey } from './config-manager.js';
 import { configError } from './error-handler.js';
 import {
     ContextManager,
@@ -21,7 +21,7 @@ import {
 import { logger } from './logger.js';
 import { renderKVTable } from './utils/table.js';
 import { redactApiKey } from './utils/secrets.js';
-import { setupAutocomplete, enhancedChatCompleter, modelCompleter } from './utils/autocomplete.js';
+import { setupAutocomplete, enhancedChatCompleter } from './utils/autocomplete.js';
 import { withRetry, type RetryOptions } from './utils/retry.js';
 import { withTimeoutAndSignal } from './utils/timeout.js';
 import { profile } from './utils/profile.js';
@@ -59,6 +59,12 @@ export function registerAdvancedCommands(program: Command): void {
             // 校验 key
             if (!key || key.trim().length === 0) {
                 throw configError('key 不能为空');
+            }
+
+            // 校验 key 是否为合法配置项
+            const validKeys = Object.keys(ConfigSchema.shape);
+            if (!validKeys.includes(key)) {
+                throw configError(`无效的配置项 "${key}"。有效选项: ${validKeys.join(', ')}`);
             }
 
             // 写入配置（项目或全局）
@@ -647,7 +653,6 @@ export function registerAdvancedCommands(program: Command): void {
                     }
 
                     // ---- 正常对话 ----
-                    const doProfile = options.profile ?? false;
                     const doStream = options.stream !== false;
 
                     debug('用户输入', {

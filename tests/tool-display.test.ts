@@ -2,7 +2,7 @@
  * tool-display.test.ts - 基础测试
  */
 
-import { ToolDisplay, formatToolCallSummary, parseToolCallFromChunk } from '../src/cli/utils/tool-display.js';
+import { ToolDisplay, formatToolCallSummary } from '../src/cli/utils/tool-display.js';
 
 let passCount = 0;
 let failCount = 0;

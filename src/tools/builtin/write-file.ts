@@ -7,7 +7,7 @@
 import type { ToolExecutor } from '../registry.js';
 import { writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { resolveSandboxPath, SANDBOX_ERROR } from '../sandbox.js';
+import { resolveSandboxPath } from '../sandbox.js';
 
 /** 工具定义 */
 export const WRITE_FILE_DEFINITION = {

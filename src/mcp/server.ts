@@ -37,8 +37,6 @@ import type {
   JsonRpcError,
   JsonRpcNotification,
   MCPTool,
-  MCPResource,
-  MCPPrompt,
   InitializeParams,
   InitializeResult,
   ListToolsResult,

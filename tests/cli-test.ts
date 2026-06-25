@@ -193,8 +193,10 @@ function run() {
     });
 
     test('非法命令输出错误', () => {
-        const { stderr } = runCli(['nonexistent-command']);
-        assertOk(stderr.length > 0 || true, '有错误输出'); // Commander 可能 stdout 或 stderr
+        const { stdout, stderr } = runCli(['nonexistent-command']);
+        const combined = stdout + stderr;
+        // Commander 可能输出到 stdout 或 stderr，至少应有错误信息或非零退出码
+        assertOk(combined.length > 0, '非法命令有错误输出');
     });
 
     // ============================================================
@@ -216,7 +218,7 @@ function run() {
 
     test('config set model', () => {
         resetConfig({});
-        const { stdout, exitCode } = runCli(['config', 'set', 'model', 'deepseek-v4-flash']);
+        const { exitCode } = runCli(['config', 'set', 'model', 'deepseek-v4-flash']);
         assertEqual(exitCode, 0, 'exit code');
 
         const raw = readFileSync(join(testDir, '.smartagentrc'), 'utf-8');
@@ -399,7 +401,7 @@ function run() {
 
     test('chat 非 TTY 环境提示', () => {
         resetConfig({});
-        const { stdout, exitCode } = runCli(['chat']);
+        const { stdout } = runCli(['chat']);
         // 非 TTY 环境 chat 无法交互，应输出提示
         assertOk(stdout.includes('Chat') || stdout.includes('终端'), '含 Chat 或终端提示');
     });
@@ -411,30 +413,34 @@ function run() {
 
     test('test:error --type user', () => {
         resetConfig({});
-        const { stderr } = runCli(['test:error', '--type', 'user']);
-        assertIncludes(stderr, 'API Key', '提示含 API Key');
+        const { stdout, stderr } = runCli(['test:error', '--type', 'user']);
+        const combined = stdout + stderr;
+        assertIncludes(combined, 'API Key', '提示含 API Key');
     });
 
     test('test:error --type network', () => {
         resetConfig({});
-        const { stderr } = runCli(['test:error', '--type', 'network']);
-        assertIncludes(stderr, '网络', '提示含网络');
+        const { stdout, stderr } = runCli(['test:error', '--type', 'network']);
+        const combined = stdout + stderr;
+        assertIncludes(combined, '网络', '提示含网络');
     });
 
     test('test:error --type system', () => {
         resetConfig({});
-        const { stderr } = runCli(['test:error', '--type', 'system']);
+        const { stdout, stderr } = runCli(['test:error', '--type', 'system']);
+        const combined = stdout + stderr;
         // systemError 输出中文错误信息，检查关键词
         assertOk(
-            stderr.includes('系统') || stderr.includes('配置文件') || stderr.includes('AgentError'),
+            combined.includes('系统') || combined.includes('配置文件') || combined.includes('AgentError'),
             'system error 有相关输出',
         );
     });
 
     test('test:error --type config', () => {
         resetConfig({});
-        const { stderr } = runCli(['test:error', '--type', 'config']);
-        assertIncludes(stderr, '配置', '提示含配置');
+        const { stdout, stderr } = runCli(['test:error', '--type', 'config']);
+        const combined = stdout + stderr;
+        assertIncludes(combined, '配置', '提示含配置');
     });
 
     // ============================================================
@@ -455,7 +461,7 @@ function run() {
 
     test('config set temperature 浮点数', () => {
         resetConfig({});
-        const { stdout, exitCode } = runCli(['config', 'set', 'temperature', '0.7']);
+        const { exitCode } = runCli(['config', 'set', 'temperature', '0.7']);
         assertEqual(exitCode, 0, 'exit code');
 
         const raw = readFileSync(join(testDir, '.smartagentrc'), 'utf-8');
@@ -523,7 +529,7 @@ function run() {
 
     test('session delete 不存在会话报错', () => {
         resetConfig({});
-        const { stderr, exitCode } = runCli(['session', 'delete', '不存在的会话']);
+        const { exitCode } = runCli(['session', 'delete', '不存在的会话']);
         // 不存在时应显示错误
         assertOk(exitCode !== null, '应有返回码');
     });

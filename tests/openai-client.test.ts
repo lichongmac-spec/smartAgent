@@ -23,9 +23,6 @@ function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg);
 }
 
-function assertInstanceOf<T>(obj: unknown, ctor: new (...args: never[]) => T): void {
-  if (!(obj instanceof ctor)) throw new Error(`期望 ${ctor.name}, 实际 ${typeof obj}`);
-}
 
 async function main() {
   console.log('\n=== OpenAI/DeepSeek 客户端测试 ===\n');

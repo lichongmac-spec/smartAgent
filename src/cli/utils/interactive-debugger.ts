@@ -13,7 +13,7 @@
  *   await dbg.start();
  */
 
-import { ContextManager, type Message } from '../context-aware.js';
+import { ContextManager } from '../context-aware.js';
 import { ToolDisplay, type ToolCall } from './tool-display.js';
 import { logger } from '../logger.js';
 import { createInterface, type Interface } from 'readline';

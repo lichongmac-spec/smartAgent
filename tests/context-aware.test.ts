@@ -56,7 +56,6 @@ async function testContextManager() {
         loadContextFromFile,
         loadMultipleContexts,
         hasPipeInput,
-        SSEStreamParser,
     } = await import(modulePath);
 
     // ---- 构造 ----
@@ -449,10 +448,10 @@ async function testContextManager() {
             'data: [DONE]\n\n',
         ];
 
-        const stream = new ReadableStream({
+        new ReadableStream({
             start(controller) {
-                for (const chunk of sseData) {
-                    controller.enqueue(encoder.encode(chunk));
+                for (const data of sseData) {
+                    controller.enqueue(encoder.encode(data));
                 }
                 controller.close();
             },

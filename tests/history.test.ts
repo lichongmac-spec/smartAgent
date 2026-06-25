@@ -20,7 +20,6 @@ import {
     loadHistory,
     saveHistory,
     searchHistory,
-    setupHistory,
 } from '../src/cli/utils/history.js';
 
 // 使用临时目录避免沙箱权限问题

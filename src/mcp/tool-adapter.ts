@@ -39,7 +39,7 @@
  *               MCPClient.callTool({ name: 'search', arguments })
  */
 
-import type { ToolDefinition, ToolCall } from '../llm/types.js';
+import type { ToolDefinition } from '../llm/types.js';
 import type { MCPTool, CallToolResult, ToolContentItem } from './types.js';
 import type { MCPClient } from './client.js';
 
@@ -182,7 +182,7 @@ export function extractToolResultText(result: CallToolResult): string {
  */
 export function createMCPToolExecutor(
   mcpClient: MCPClient,
-  serverName: string,
+  _serverName: string,
   toolName: string,
 ) {
   return async (args: Record<string, unknown>): Promise<unknown> => {

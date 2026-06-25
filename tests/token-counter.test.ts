@@ -27,9 +27,6 @@ function assertLt(a: number, b: number, msg?: string): void {
   if (!(a < b)) throw new Error(msg ?? `期望 ${a} < ${b}`);
 }
 
-function assertBetween(val: number, lo: number, hi: number, msg?: string): void {
-  if (!(val >= lo && val <= hi)) throw new Error(msg ?? `期望 ${val} 在 [${lo}, ${hi}] 之间`);
-}
 
 async function main() {
   console.log('\n=== Token 计数器测试 ===\n');

@@ -24,7 +24,7 @@
  */
 
 import type { ILLMClient, Message, ChatResponse, ToolCall } from '../llm/types.js';
-import type { LoopState, LoopConfig, StepCallback, StepRecord } from './types.js';
+import type { LoopState, LoopConfig, StepCallback } from './types.js';
 import { ToolRegistry } from '../tools/registry.js';
 import type { ContextManager } from '../context/context-manager.js';
 import { isRetryableError } from '../llm/errors.js';

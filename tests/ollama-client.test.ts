@@ -7,10 +7,9 @@
  */
 
 import { OllamaClient } from '../src/llm/ollama-client.js';
-import type { ILLMClient, ChatResponse } from '../src/llm/types.js';
+import type { ILLMClient } from '../src/llm/types.js';
 import {
   LLMError,
-  NetworkError,
   ModelUnavailableError,
   isRetryableError,
 } from '../src/llm/errors.js';

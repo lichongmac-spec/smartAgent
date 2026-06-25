@@ -79,7 +79,6 @@ import {
   MCPConnectionError,
   MCPMethodNotFoundError,
   MCPInvalidParamsError,
-  JSONRPC_VERSION,
   ErrorCode,
   MCP_VERSION,
 } from '../src/mcp/types.js';

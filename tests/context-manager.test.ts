@@ -32,17 +32,11 @@ function assertGt(a: number, b: number, msg?: string): void {
   if (!(a > b)) throw new Error(msg ?? `期望 ${a} > ${b}`);
 }
 
-function assertLt(a: number, b: number, msg?: string): void {
-  if (!(a < b)) throw new Error(msg ?? `期望 ${a} < ${b}`);
-}
 
 function assertContains(haystack: string, needle: string, msg?: string): void {
   if (!haystack.includes(needle)) throw new Error(msg ?? `"${haystack}" 中未找到 "${needle}"`);
 }
 
-function assertBetween(val: number, lo: number, hi: number, msg?: string): void {
-  if (!(val >= lo && val <= hi)) throw new Error(msg ?? `期望 ${val} 在 [${lo}, ${hi}] 之间`);
-}
 
 async function main() {
   console.log('\n=== 上下文管理器测试 ===\n');

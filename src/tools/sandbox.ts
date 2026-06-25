@@ -9,9 +9,8 @@
  *   const resolved = resolveSandboxPath('/some/input/path');
  */
 
-import { resolve, normalize, relative, dirname, join } from 'path';
+import { resolve, normalize, relative, dirname } from 'path';
 import { existsSync, statSync, realpathSync } from 'fs';
-import { tmpdir } from 'os';
 
 // ============================================================
 //  沙箱配置

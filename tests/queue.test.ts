@@ -393,8 +393,9 @@ async function testEdgeCases(): Promise<void> {
     const q = new TaskQueue({ concurrency: 5, baseDelay: 1 });
     let count = 0;
 
+    // 使用确定性优先级：交替高低优先级
     for (let i = 0; i < 50; i++) {
-      q.add(async () => { count++; await sleep(1); }, Math.floor(Math.random() * 100));
+      q.add(async () => { count++; await sleep(1); }, i % 10);
     }
 
     await q.drain(10000);

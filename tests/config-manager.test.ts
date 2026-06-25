@@ -20,18 +20,6 @@ import { encrypt, isEncrypted } from '../src/cli/utils/encrypt.js';
 let testCount = 0;
 let passCount = 0;
 
-function testSync(name: string, fn: () => void) {
-    testCount++;
-    console.log(`\n📝 测试 ${testCount}: ${name}`);
-    try {
-        fn();
-        passCount++;
-        console.log('  ✅ 通过');
-    } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.log(`  ❌ 失败: ${msg}`);
-    }
-}
 
 async function testAsync(name: string, fn: () => Promise<void>) {
     testCount++;
@@ -62,7 +50,6 @@ function assertMatch(value: string, regex: RegExp, msg = ''): void {
     }
 }
 
-type ConfigManagerType = InstanceType<typeof import('../src/cli/config-manager.js').ConfigManager>;
 
 // ============================================================
 //  环境管理

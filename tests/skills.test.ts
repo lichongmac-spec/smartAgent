@@ -301,7 +301,7 @@ async function main(): Promise<void> {
     registry.register({ definition: existingDef, executor: async () => 'original' });
 
     // 然后集成 Skill（应跳过同名工具）
-    const loader = await integrateSkills(registry, {
+    await integrateSkills(registry, {
       skills: [emailSkill],
       verbose: false,
     });

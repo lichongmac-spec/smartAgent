@@ -20,7 +20,7 @@
  */
 
 import { EventEmitter } from 'events';
-import type { Job, JobStatus, QueueConfig, QueueStats } from './types.js';
+import type { Job, QueueConfig, QueueStats } from './types.js';
 
 // ============================================================
 //  事件接口
@@ -118,7 +118,7 @@ export class TaskQueue extends EventEmitter {
    * @param timeoutMs 超时时间（毫秒），-1 表示无超时
    */
   async drain(timeoutMs = -1): Promise<void> {
-    if (this.jobs.length === 0 && this.running === 0) return;
+    if (this.jobs.length === 0 && this.running === 0 && this.pendingRetries === 0) return;
 
     return new Promise<void>((resolve, reject) => {
       let timer: NodeJS.Timeout | null = null;

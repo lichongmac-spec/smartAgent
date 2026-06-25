@@ -24,7 +24,7 @@
 
 import { spawnSync } from 'child_process';
 import { readdirSync, statSync } from 'fs';
-import { resolve, relative, basename, sep } from 'path';
+import { resolve, relative, sep } from 'path';
 
 // ─── 颜色 ───
 const C = {
@@ -51,7 +51,7 @@ function findTestFiles(dir: string): string[] {
     try {
         const entries = readdirSync(dir);
         for (const entry of entries) {
-            if (entry === 'fixtures' || entry === 'node_modules') continue;
+            if (entry === 'fixtures' || entry === 'node_modules' || entry === 'electron') continue;
             const full = resolve(dir, entry);
             const stat = statSync(full);
             if (stat.isDirectory()) {
@@ -134,11 +134,6 @@ const groupLabels: Record<string, string> = {
     unit: '📦 单元测试',
     integration: '🔗 集成测试',
     e2e: '🌐 E2E 测试',
-};
-const groupIcons: Record<string, string> = {
-    unit: '  ',
-    integration: '',
-    e2e: '',
 };
 
 for (const key of groupOrder) {

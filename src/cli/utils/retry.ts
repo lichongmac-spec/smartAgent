@@ -123,8 +123,9 @@ export async function withRetry<T>(
         maxTotalTimeout,
     } = options;
 
-    // retries=0：不重试，直接执行
+    // retries=0：不重试，直接执行（但需检查 AbortSignal）
     if (retries <= 0) {
+        if (signal?.aborted) throw new Error('操作已中止');
         return await fn();
     }
 

@@ -10,7 +10,7 @@
 
 import { MockLLMClient } from '../src/llm/mock-client.js';
 import { createLLMClient, detectProvider } from '../src/llm/client-factory.js';
-import type { ILLMClient, ChatResponse } from '../src/llm/types.js';
+import type { ILLMClient } from '../src/llm/types.js';
 
 let passCount = 0;
 let failCount = 0;
