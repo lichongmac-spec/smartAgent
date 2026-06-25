@@ -192,7 +192,7 @@ export class SSEStreamParser {
                 if (chunk) yield chunk;
             }
         } finally {
-            this.reader.releaseLock();
+            try { this.reader.releaseLock(); } catch { /* 流可能已被自动释放 */ }
         }
     }
 
@@ -263,13 +263,6 @@ export async function readFromStdin(options: StdinOptions = {}): Promise<string>
         let resolved = false;
         let timer: ReturnType<typeof setTimeout>;
 
-        const cleanup = (): void => {
-            clearTimeout(timer);
-            process.stdin.removeAllListeners('data');
-            process.stdin.removeAllListeners('end');
-            process.stdin.removeAllListeners('error');
-        };
-
         const finish = (result: string) => {
             if (resolved) return;
             resolved = true;
@@ -277,12 +270,7 @@ export async function readFromStdin(options: StdinOptions = {}): Promise<string>
             resolve(result);
         };
 
-        // 超时保护
-        timer = setTimeout(() => {
-            finish(data.trim());
-        }, timeout);
-
-        process.stdin.on('data', (chunk: Buffer) => {
+        const onData = (chunk: Buffer) => {
             data += chunk.toString();
 
             // 超过大小限制时截断并结束
@@ -290,15 +278,31 @@ export async function readFromStdin(options: StdinOptions = {}): Promise<string>
                 data = data.slice(0, maxBytes);
                 finish(data.trim());
             }
-        });
+        };
 
-        process.stdin.on('end', () => {
+        const onEnd = () => {
             finish(data.trim());
-        });
+        };
 
-        process.stdin.on('error', () => {
+        const onError = () => {
             finish(data.trim()); // 出错时返回已读取部分
-        });
+        };
+
+        const cleanup = (): void => {
+            clearTimeout(timer);
+            process.stdin.removeListener('data', onData);
+            process.stdin.removeListener('end', onEnd);
+            process.stdin.removeListener('error', onError);
+        };
+
+        // 超时保护
+        timer = setTimeout(() => {
+            finish(data.trim());
+        }, timeout);
+
+        process.stdin.on('data', onData);
+        process.stdin.on('end', onEnd);
+        process.stdin.on('error', onError);
 
         // 如果 stdin 已经结束（数据已在缓冲区），立即读取
         // Node.js 中 pause() 过的 stream 不会触发 'data'

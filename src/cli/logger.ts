@@ -109,22 +109,22 @@ function resolveVerbose(explicit?: boolean): boolean {
 export const logger = {
     /** 普通信息 */
     info(msg: string): void {
-        console.log(`${_noColor ? '' : 'ℹ '}${safeOutput(msg)}`);
+        console.log(`${_noColor ? '[INFO] ' : 'ℹ '}${safeOutput(msg)}`);
     },
 
     /** 成功 */
     success(msg: string): void {
-        console.log(`${_noColor ? '' : '✅ '}${safeOutput(msg)}`);
+        console.log(`${_noColor ? '[OK] ' : '✅ '}${safeOutput(msg)}`);
     },
 
     /** 警告 */
     warn(msg: string): void {
-        console.log(`${_noColor ? '' : '⚠️ '}${safeOutput(msg)}`);
+        console.log(`${_noColor ? '[WARN] ' : '⚠️ '}${safeOutput(msg)}`);
     },
 
     /** 错误 */
     error(msg: string): void {
-        console.error(`${_noColor ? '' : '❌ '}${safeOutput(msg)}`);
+        console.error(`${_noColor ? '[ERROR] ' : '❌ '}${safeOutput(msg)}`);
     },
 
     /**
@@ -148,7 +148,7 @@ export const logger = {
             output = String(msg);
         }
 
-        console.log(`${_noColor ? '' : '🔍 '}${safeOutput(output)}`);
+        console.log(`${_noColor ? '[DEBUG] ' : '🔍 '}${safeOutput(output)}`);
     },
 
     /** 纯输出（无前缀，无换行），用于拼接 */
@@ -181,7 +181,7 @@ export const logger = {
             end: () => {
                 const elapsed = ((Date.now() - start) / 1000).toFixed(2);
                 if (_noColor) {
-                    console.log(`⏱️ ${labelStr}: ${elapsed}s`);
+                    console.log(`[Timer] ${labelStr}: ${elapsed}s`);
                 } else {
                     console.log(`${pc.gray('⏱️')} ${pc.cyan(labelStr)}: ${pc.yellow(elapsed)}s`);
                 }
@@ -327,12 +327,12 @@ export async function withSpinner<T>(
 ): Promise<T> {
     // CI / noColor 环境：降级为纯文本进度
     if (_isCI || _noColor) {
-        console.log(`⏳ ${text}`);
+        console.log(`[SPIN] ${text}`);
         const mockSpinner = getMockSpinner(text);
 
         try {
             const result = await fn(mockSpinner);
-            console.log(`✅ ${text}`);
+            console.log(`[DONE] ${text}`);
             return result;
         } catch (error) {
             console.error(`❌ ${text}`);
@@ -510,7 +510,7 @@ export async function Select<T extends string>(
 /**
  * 交互式多选
  *
- * 返回选中的 value 列表；取消返回空数组（不退出）
+ * 取消时退出进程
  */
 export async function MultiSelect<T extends string>(
     message: string,
@@ -551,7 +551,7 @@ export async function Confirm(message: string): Promise<boolean> {
 /**
  * 文本输入
  *
- * @returns 用户输入的字符串；取消返回空字符串
+ * 取消时退出进程
  */
 export async function Input(
     message: string,

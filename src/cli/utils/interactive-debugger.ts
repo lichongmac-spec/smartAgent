@@ -76,8 +76,12 @@ export class InteractiveDebugger {
         // 使用 for-await 监听输入
         try {
             for await (const line of this.rl) {
-                const cmd = line.trim().toLowerCase();
-                const handled = await this.handleCommand(cmd);
+                const trimmed = line.trim();
+                if (!trimmed) { this.rl.prompt(); continue; }
+                const parts = trimmed.split(/\s+/);
+                const command = parts[0].toLowerCase();
+                const args = parts.slice(1);
+                const handled = await this.handleCommand(command, args);
                 if (!handled) break; // 退出
                 if (this.isRunning) this.rl.prompt();
             }
@@ -91,10 +95,10 @@ export class InteractiveDebugger {
      *
      * @returns true = 继续循环, false = 退出
      */
-    private async handleCommand(cmd: string): Promise<boolean> {
+    private async handleCommand(command: string, args: string[]): Promise<boolean> {
         if (!this.state) return false;
 
-        switch (cmd) {
+        switch (command) {
             case 'n':
             case 'next':
                 this.stepForward();
@@ -123,15 +127,17 @@ export class InteractiveDebugger {
 
             case 'b':
             case 'breakpoint': {
-                const parts = cmd.split(/\s+/);
-                if (parts.length > 1) {
-                    const bp = parseInt(parts[1], 10);
+                if (args.length > 0) {
+                    const bp = parseInt(args[0], 10);
                     if (!isNaN(bp)) {
                         this.state.breakpoints.add(bp);
                         logger.success(`已在步骤 ${bp} 设置断点`);
+                    } else {
+                        logger.warn(`无效的步骤号: ${args[0]}`);
                     }
                 } else {
-                    logger.info(`当前断点: ${[...this.state.breakpoints].join(', ') || '(无)'}`);
+                    const bps = [...this.state.breakpoints].join(', ') || '(无)';
+                    logger.info(`当前断点: ${bps}`);
                 }
                 return true;
             }
@@ -144,10 +150,8 @@ export class InteractiveDebugger {
                 return false;
 
             default:
-                if (cmd) {
-                    logger.warn(`未知命令: ${cmd}`);
-                    logger.info(`可用: ${pc.cyan('n')} ${pc.cyan('c')} ${pc.cyan('s')} ${pc.cyan('m')} ${pc.cyan('t')} ${pc.cyan('q')}`);
-                }
+                logger.warn(`未知命令: ${command}`);
+                logger.info(`可用: ${pc.cyan('n')} ${pc.cyan('c')} ${pc.cyan('s')} ${pc.cyan('m')} ${pc.cyan('t')} ${pc.cyan('q')}`);
                 return true;
         }
     }

@@ -193,7 +193,7 @@ async function main() {
             const timer = logger.timer('noColor task');
             timer.end();
         });
-        assert(r2.stdout.some(s => s.includes('⏱️ noColor task')), 'noColor 下 timer 仍应工作');
+        assert(r2.stdout.some(s => s.includes('[Timer] noColor task')), 'noColor 下 timer 仍应工作');
         assert(/[\d.]+s/.test(r2.stdout.join('')), 'noColor 下秒数应可匹配');
 
         configureLogger({ noColor: false });

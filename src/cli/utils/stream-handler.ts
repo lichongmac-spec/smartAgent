@@ -150,9 +150,13 @@ export class StreamHandler {
 
                 if (delay > 0) {
                     await new Promise<void>((resolve) => {
-                        const timeout = setTimeout(resolve, delay);
+                        const onAbort = () => clearTimeout(timeout);
+                        const timeout = setTimeout(() => {
+                            this.abortController?.signal.removeEventListener('abort', onAbort);
+                            resolve();
+                        }, delay);
                         if (this.abortController) {
-                            this.abortController.signal.addEventListener('abort', () => clearTimeout(timeout));
+                            this.abortController.signal.addEventListener('abort', onAbort, { once: true });
                         }
                     });
                 }
@@ -213,7 +217,8 @@ export async function streamToStdout(
 
     // 如果外部传入了 signal，监听 abort
     if (options.signal) {
-        options.signal.addEventListener('abort', () => handler.interrupt());
+        const onExternalAbort = () => handler.interrupt();
+        options.signal.addEventListener('abort', onExternalAbort, { once: true });
     }
 
     const onToken = (token: string) => {

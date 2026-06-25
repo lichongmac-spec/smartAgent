@@ -23,6 +23,7 @@
  */
 
 import { performance, PerformanceObserver } from 'perf_hooks';
+import pc from 'picocolors';
 
 // ============================================================
 //  Profiler — 收集多次测量并输出汇总
@@ -121,11 +122,11 @@ export class Profiler {
             console.log(`├${hr}┤`);
 
             // 颜色：>100ms 红色，>20ms 黄色，否则绿色
-            const color = r.duration! > 100 ? '\x1b[31m'    // 红
-                : r.duration! > 20 ? '\x1b[33m'   // 黄
-                : '\x1b[32m';                       // 绿
-            const reset = '\x1b[0m';
-            const durStr = `${color}${r.duration!.toFixed(2)}ms${reset}`;
+            const durStr = r.duration! > 100
+                ? pc.red(`${r.duration!.toFixed(2)}ms`)
+                : r.duration! > 20
+                    ? pc.yellow(`${r.duration!.toFixed(2)}ms`)
+                    : pc.green(`${r.duration!.toFixed(2)}ms`);
 
             // 需要计算不含 ANSI 转义码的可视宽度
             const visualLen = `${r.duration!.toFixed(2)}ms`.length;
