@@ -17,6 +17,7 @@
   },
   "include": [
     "electron/main/index.ts",
+    "electron/main/agent-service.ts",
     "electron/preload/index.ts"
   ],
   "exclude": [

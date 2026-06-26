@@ -10,6 +10,7 @@ electron-build/
 .env
 .env.local
 .env.*.local
+.pnpm-lock.yaml
 
 # IDE
 .vscode/
