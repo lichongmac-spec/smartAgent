@@ -28,6 +28,7 @@ import type { ContextManager } from '../context/context-manager.js';
 import { isRetryableError } from '../llm/errors.js';
 import type { ChatResponse, ILLMClient, Message, ToolCall } from '../llm/types.js';
 import type { LoopConfig, LoopState, StepCallback } from './types.js';
+import { TokenCounter } from '../llm/token-counter.js';
 
 // ============================================================
 //  ReAct 系统提示词
@@ -124,6 +125,9 @@ export class LoopEngine {
   /** 最大重试次数 */
   private _maxRetries: number = 3;
 
+  /** Token 计数器（用于上下文裁剪） */
+  private _tokenCounter: TokenCounter;
+
   /** 步骤回调 */
   private onStep?: StepCallback;
 
@@ -154,6 +158,7 @@ export class LoopEngine {
     this.llm = llm;
     this.tools = tools;
     this.onStep = onStep;
+    this._tokenCounter = new TokenCounter();
 
     this.config = {
       maxSteps: config.maxSteps ?? 10,
@@ -211,7 +216,7 @@ export class LoopEngine {
 
       // ---- 2.0 上下文裁剪（防止 Token 溢出） ----
       if (this.config.maxContextTokens > 0 && messages.length > 2) {
-        const estimatedTokens = this._estimateTotalTokens(messages);
+        const estimatedTokens = this._tokenCounter.countMessages(messages);
         if (estimatedTokens > this.config.maxContextTokens) {
           const trimmed = this._trimMessages(messages, this.config.maxContextTokens);
           this.log(`✂️ 上下文超限 (${estimatedTokens}/${this.config.maxContextTokens} Token)，裁剪了 ${trimmed} 条消息`);
@@ -382,7 +387,7 @@ export class LoopEngine {
 
       // 上下文裁剪
       if (this.config.maxContextTokens > 0 && messages.length > 2) {
-        const estimatedTokens = this._estimateTotalTokens(messages);
+        const estimatedTokens = this._tokenCounter.countMessages(messages);
         if (estimatedTokens > this.config.maxContextTokens) {
           const trimmed = this._trimMessages(messages, this.config.maxContextTokens);
           yield `\n✂️ 上下文已裁剪 (${trimmed} 条旧消息)\n`;
@@ -704,48 +709,6 @@ export class LoopEngine {
   }
 
   /**
-   * 估算消息列表的 Token 总量
-   *
-   * 启发式算法：英文 ~4 字符/token，中文 ~1.5 字符/token
-   */
-  private _estimateTotalTokens(messages: Message[]): number {
-    let total = 0;
-    for (const msg of messages) {
-      // 每条消息的 role 及格式开销约 4 Token
-      total += 4;
-      // 内容文本
-      total += this._estimateTextTokens(msg.content);
-    }
-    return total;
-  }
-
-  /** 估算单段文本的 Token 数 */
-  private _estimateTextTokens(text: string): number {
-    if (!text) return 0;
-    let cnChars = 0;
-    let total = 0;
-    for (const ch of text) {
-      total++;
-      const code = ch.codePointAt(0) ?? 0;
-      if (
-        (code >= 0x4E00 && code <= 0x9FFF) ||
-        (code >= 0x3400 && code <= 0x4DBF) ||
-        (code >= 0x20000 && code <= 0x2A6DF) ||
-        (code >= 0x3040 && code <= 0x309F) ||
-        (code >= 0x30A0 && code <= 0x30FF) ||
-        (code >= 0xAC00 && code <= 0xD7AF)
-      ) {
-        cnChars++;
-      }
-    }
-    if (total === 0) return 0;
-    const cnRatio = cnChars / total;
-    return cnRatio > 0.3
-      ? Math.ceil(total / 1.5)
-      : Math.ceil(total / 4);
-  }
-
-  /**
    * 裁剪消息列表以保持在 Token 上限内
    *
    * 策略：
@@ -762,7 +725,7 @@ export class LoopEngine {
     // 分离 system 消息和非 system 消息
     const systemMsgs = messages.filter(m => m.role === 'system');
     const nonSystemMsgs = messages.filter(m => m.role !== 'system');
-    const systemTokens = this._estimateTotalTokens(systemMsgs);
+    const systemTokens = this._tokenCounter.countMessages(systemMsgs);
     const available = targetTokens - systemTokens;
 
     if (available <= 0 || nonSystemMsgs.length <= 2) return 0;
@@ -772,7 +735,7 @@ export class LoopEngine {
     let keepFrom = nonSystemMsgs.length;
 
     for (let i = nonSystemMsgs.length - 1; i >= 0; i--) {
-      const msgTokens = 4 + this._estimateTextTokens(nonSystemMsgs[i].content);
+      const msgTokens = 4 + this._tokenCounter.count(nonSystemMsgs[i].content);
       if (usedTokens + msgTokens <= available) {
         usedTokens += msgTokens;
         keepFrom = i;

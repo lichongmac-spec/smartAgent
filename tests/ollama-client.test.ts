@@ -6,13 +6,13 @@
  * 运行: node tests/test.ts --only unit  或直接 node --loader ts-node/esm tests/ollama-client.test.ts
  */
 
-import { OllamaClient } from '../src/llm/ollama-client.js';
-import type { ILLMClient } from '../src/llm/types.js';
+import { OllamaClient } from '../src/agent/llm/ollama-client.js';
+import type { ILLMClient } from '../src/agent/llm/types.js';
 import {
   LLMError,
   ModelUnavailableError,
   isRetryableError,
-} from '../src/llm/errors.js';
+} from '../src/agent/llm/errors.js';
 
 let passCount = 0;
 let failCount = 0;

@@ -1,178 +1,162 @@
 /**
- * Preload 脚本单元测试
+ * Preload 脚本单元测试 — Stream 版
  *
- * 测试 electron/preload/index.ts 的 contextBridge 暴露 API。
- * 验证 11 个 API 的正确 ipcRenderer.invoke/on 调用参数。
+ * 测试 src/electron/preload/index.ts 的 contextBridge 暴露 API。
+ * 新 API 通过 window.agent 暴露 4 个属性：
+ *   askStream / interrupt / name / platform
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// 模块级变量供 vi.mock 工厂函数闭包访问（vi.mock 会被 hoist 到顶层）
 const mockExposeInMainWorld = vi.fn();
-const mockIpcRendererInvoke = vi.fn().mockResolvedValue({});
+const mockIpcRendererSend = vi.fn();
 const mockIpcRendererOn = vi.fn();
-const mockIpcRendererOff = vi.fn();
+const mockIpcRendererRemoveListener = vi.fn();
 
 vi.mock('electron', () => ({
   contextBridge: {
     exposeInMainWorld: mockExposeInMainWorld,
   },
   ipcRenderer: {
-    invoke: mockIpcRendererInvoke,
+    send: mockIpcRendererSend,
     on: mockIpcRendererOn,
-    off: mockIpcRendererOff,
+    removeListener: mockIpcRendererRemoveListener,
   },
 }));
 
-describe('Preload Script (API surface)', () => {
+describe('Preload Script (stream API)', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockIpcRendererInvoke.mockResolvedValue({});
     vi.resetModules();
-    await import('../../electron/preload/index.js');
+    await import('../../src/electron/preload/index.js');
   });
 
-  // ─── API 数量 ───────────────────────────────
+  // ─── API 表面测试 ──────────────────────────
 
-  it('should expose exactly 11 API methods', () => {
-    expect(mockExposeInMainWorld).toHaveBeenCalledWith('electron', expect.any(Object));
+  it('should expose window.agent with 4 properties', () => {
+    expect(mockExposeInMainWorld).toHaveBeenCalledWith('agent', expect.any(Object));
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    const apiKeys = Object.keys(api);
-    expect(apiKeys).toHaveLength(11);
+    const keys = Object.keys(api);
+    expect(keys).toHaveLength(4);
+    expect(keys.sort()).toEqual(['askStream', 'interrupt', 'name', 'platform'].sort());
   });
 
-  // ─── Agent 对话 API ─────────────────────────
-
-  it('should expose askAgent method', () => {
+  it('should expose askStream as function', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.askAgent).toBeDefined();
-    expect(typeof api.askAgent).toBe('function');
+    expect(api.askStream).toBeDefined();
+    expect(typeof api.askStream).toBe('function');
   });
 
-  it('should expose askAgentStream method', () => {
+  it('should expose interrupt as function', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.askAgentStream).toBeDefined();
-    expect(typeof api.askAgentStream).toBe('function');
+    expect(api.interrupt).toBeDefined();
+    expect(typeof api.interrupt).toBe('function');
   });
 
-  it('should expose interruptAgent method', () => {
+  it('should expose name as string', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.interruptAgent).toBeDefined();
-    expect(typeof api.interruptAgent).toBe('function');
+    expect(api.name).toBe('SmartAgent Desktop');
   });
 
-  // ─── 工具管理 API ───────────────────────────
-
-  it('should expose getTools method', () => {
+  it('should expose platform as string', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getTools).toBeDefined();
-    expect(typeof api.getTools).toBe('function');
+    expect(typeof api.platform).toBe('string');
   });
 
-  // ─── 记忆搜索 API ───────────────────────────
+  // ─── askStream 行为测试 ────────────────────
 
-  it('should expose searchMemory method', () => {
+  it('askStream should call ipcRenderer.send with correct params', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.searchMemory).toBeDefined();
-    expect(typeof api.searchMemory).toBe('function');
+    const onChunk = vi.fn();
+    const onDone = vi.fn();
+    const onError = vi.fn();
+
+    api.askStream('Hello', onChunk, onDone, onError);
+
+    // 应该发送 agent:ask-stream 请求
+    expect(mockIpcRendererSend).toHaveBeenCalledWith('agent:ask-stream', { prompt: 'Hello' });
+    // 应该注册 agent:chunk 监听器
+    expect(mockIpcRendererOn).toHaveBeenCalledWith('agent:chunk', expect.any(Function));
   });
 
-  // ─── 配置管理 API ───────────────────────────
-
-  it('should expose getConfig method', () => {
+  it('askStream chunk handler should call onChunk for each text piece', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getConfig).toBeDefined();
-    expect(typeof api.getConfig).toBe('function');
+    const onChunk = vi.fn();
+    const onDone = vi.fn();
+    const onError = vi.fn();
+
+    api.askStream('Hi', onChunk, onDone, onError);
+
+    // 获取注册的处理器
+    const chunkHandler = mockIpcRendererOn.mock.calls[0][1];
+
+    // 模拟主进程发送 chunk
+    chunkHandler({}, { chunk: '你', done: false });
+    expect(onChunk).toHaveBeenCalledWith('你');
+    expect(onDone).not.toHaveBeenCalled();
+
+    chunkHandler({}, { chunk: '好', done: false });
+    expect(onChunk).toHaveBeenCalledWith('好');
   });
 
-  it('should expose setConfig method', () => {
+  it('askStream should call onDone and cleanup when stream ends', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.setConfig).toBeDefined();
-    expect(typeof api.setConfig).toBe('function');
+    const onChunk = vi.fn();
+    const onDone = vi.fn();
+    const onError = vi.fn();
+
+    api.askStream('Hi', onChunk, onDone, onError);
+
+    const chunkHandler = mockIpcRendererOn.mock.calls[0][1];
+
+    // 发送结束信号
+    chunkHandler({}, { chunk: '', done: true });
+    expect(onDone).toHaveBeenCalled();
+    expect(mockIpcRendererRemoveListener).toHaveBeenCalledWith('agent:chunk', chunkHandler);
   });
 
-  // ─── 调度任务 API ───────────────────────────
-
-  it('should expose getScheduledTasks method', () => {
+  it('askStream should call onError and cleanup on error', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getScheduledTasks).toBeDefined();
-    expect(typeof api.getScheduledTasks).toBe('function');
+    const onChunk = vi.fn();
+    const onDone = vi.fn();
+    const onError = vi.fn();
+
+    api.askStream('Hi', onChunk, onDone, onError);
+
+    const chunkHandler = mockIpcRendererOn.mock.calls[0][1];
+
+    // 发送错误
+    chunkHandler({}, { chunk: '', done: true, error: 'API Key missing' });
+    expect(onError).toHaveBeenCalledWith('API Key missing');
+    expect(mockIpcRendererRemoveListener).toHaveBeenCalledWith('agent:chunk', chunkHandler);
   });
 
-  it('should expose addScheduledTask method', () => {
+  it('askStream should not leak listeners (cleanup on done)', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.addScheduledTask).toBeDefined();
-    expect(typeof api.addScheduledTask).toBe('function');
+    api.askStream('A', vi.fn(), vi.fn(), vi.fn());
+    api.askStream('B', vi.fn(), vi.fn(), vi.fn());
+
+    // 每次调用 register 一个 listener
+    expect(mockIpcRendererOn).toHaveBeenCalledTimes(2);
   });
 
-  // ─── 健康与队列 API ─────────────────────────
+  // ─── interrupt 行为测试 ────────────────────
 
-  it('should expose getHeartbeatStatus method', () => {
+  it('interrupt should send agent:interrupt', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getHeartbeatStatus).toBeDefined();
-    expect(typeof api.getHeartbeatStatus).toBe('function');
+    api.interrupt();
+    expect(mockIpcRendererSend).toHaveBeenCalledWith('agent:interrupt');
   });
 
-  it('should expose getQueueStats method', () => {
+  // ─── 方法签名验证 ──────────────────────────
+
+  it('askStream should accept 4 parameters', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getQueueStats).toBeDefined();
-    expect(typeof api.getQueueStats).toBe('function');
+    expect(api.askStream.length).toBe(4);
   });
 
-  // ─── 方法签名验证 ───────────────────────────
-
-  it('askAgent should accept 1-2 parameters', () => {
+  it('interrupt should accept 0 parameters', () => {
     const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.askAgent.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('askAgentStream should accept 3-4 parameters', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.askAgentStream.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it('interruptAgent should accept 0 parameters', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.interruptAgent.length).toBe(0);
-  });
-
-  it('getTools should accept 0 parameters', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getTools.length).toBe(0);
-  });
-
-  it('searchMemory should accept 1-2 parameters', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.searchMemory.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('getConfig should accept 1 parameter', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getConfig.length).toBe(1);
-  });
-
-  it('setConfig should accept 2 parameters', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.setConfig.length).toBe(2);
-  });
-
-  it('getScheduledTasks should accept 0 parameters', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getScheduledTasks.length).toBe(0);
-  });
-
-  it('addScheduledTask should accept 3 parameters', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.addScheduledTask.length).toBe(3);
-  });
-
-  it('getHeartbeatStatus should accept 0 parameters', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getHeartbeatStatus.length).toBe(0);
-  });
-
-  it('getQueueStats should accept 0 parameters', () => {
-    const api = mockExposeInMainWorld.mock.calls[0][1];
-    expect(api.getQueueStats.length).toBe(0);
+    expect(api.interrupt.length).toBe(0);
   });
 });

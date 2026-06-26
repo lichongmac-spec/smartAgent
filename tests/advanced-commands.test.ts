@@ -9,7 +9,7 @@ import { Command } from 'commander';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { decrypt, isEncrypted } from '../src/cli/utils/encrypt.js';
+import { decrypt, isEncrypted } from '../src/agent/cli/utils/encrypt.js';
 
 // ============================================================
 //  测试辅助
@@ -67,7 +67,7 @@ const savedEnv = {
 //  工具：创建 Commander 程序并注册命令
 // ============================================================
 async function createProgram() {
-    const { registerAdvancedCommands } = await import('../src/cli/advanced-commands.js');
+    const { registerAdvancedCommands } = await import('../src/agent/cli/advanced-commands.js');
     const program = new Command();
     program.name('agent').exitOverride();
     registerAdvancedCommands(program);
@@ -119,7 +119,7 @@ async function resetConfig(config: Record<string, unknown> = {}) {
     // 确保没有本地覆盖文件
     try { rmSync(join(testDir, '.smartagentrc.local.json'), { force: true }); } catch { /* */ }
     // 重载
-    const { configManager } = await import('../src/cli/config-manager.js');
+    const { configManager } = await import('../src/agent/cli/config-manager.js');
     configManager.reload();
 }
 

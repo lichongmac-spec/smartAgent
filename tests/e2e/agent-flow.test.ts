@@ -32,7 +32,7 @@ function teardown(): void {
 }
 
 // Use absolute path for tsx/esm so it works regardless of child process cwd
-const cliEntry = resolve('src/cli/index.ts');
+const cliEntry = resolve('src/agent/cli/index.ts');
 const tsxEsm = resolve('node_modules/tsx/dist/esm/index.mjs');
 
 function runCli(args: string[]): { stdout: string; stderr: string; code: number | null } {

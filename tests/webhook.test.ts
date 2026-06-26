@@ -9,8 +9,8 @@
 
 import { createServer } from 'http';
 import type { IncomingMessage, Server } from 'http';
-import { WebhookNotifier } from '../src/webhook/index.js';
-import type { WebhookConfig, WebhookPayload } from '../src/webhook/types.js';
+import { WebhookNotifier } from '../src/agent/webhook/index.js';
+import type { WebhookConfig, WebhookPayload } from '../src/agent/webhook/types.js';
 
 // ============================================================
 //  测试工具

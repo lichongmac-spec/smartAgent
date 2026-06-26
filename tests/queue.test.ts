@@ -4,8 +4,8 @@
  * 运行：npx tsx tests/queue.test.ts
  */
 
-import { TaskQueue } from '../src/queue/index.js';
-import type { Job } from '../src/queue/types.js';
+import { TaskQueue } from '../src/agent/queue/index.js';
+import type { Job } from '../src/agent/queue/types.js';
 
 // ============================================================
 //  测试工具

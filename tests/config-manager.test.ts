@@ -12,7 +12,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { encrypt, isEncrypted } from '../src/cli/utils/encrypt.js';
+import { encrypt, isEncrypted } from '../src/agent/cli/utils/encrypt.js';
 
 // ============================================================
 //  测试辅助
@@ -148,7 +148,7 @@ async function run() {
     await testAsync('默认构造 - 无配置文件返回默认值', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
             const config = mgr.get();
 
@@ -169,7 +169,7 @@ async function run() {
     await testAsync('getValue - 获取存在的配置项', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
 
             assertEqual(mgr.getValue('model'), 'deepseek-v4-flash', 'model');
@@ -182,7 +182,7 @@ async function run() {
     await testAsync('getValue - 默认值回退', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
 
             assertEqual(mgr.getValue('apiKey', 'fallback-key'), 'fallback-key', '回退默认值');
@@ -201,7 +201,7 @@ async function run() {
                 model: 'deepseek-reasoner',
             }));
 
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
             const config = mgr.get();
 
@@ -226,7 +226,7 @@ async function run() {
                 verbose: true,
             }));
 
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
             const config = mgr.get();
 
@@ -251,7 +251,7 @@ async function run() {
             process.env.AGENT_API_KEY = 'sk-env-override';
             process.env.AGENT_MODEL = 'deepseek-reasoner';
 
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
             const config = mgr.get();
 
@@ -267,7 +267,7 @@ async function run() {
     await testAsync('set 写入时 apiKey 加密存储', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
 
             mgr.set('apiKey', 'sk-new-key');
@@ -295,7 +295,7 @@ async function run() {
         try {
             process.env.XDG_CONFIG_HOME = join(dir, '.config');
 
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
 
             mgr.setGlobal('apiKey', 'sk-global');
@@ -315,7 +315,7 @@ async function run() {
     await testAsync('reload 热重载配置（明文文件向后兼容）', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
 
             assertEqual(mgr.getValue('apiKey', undefined), undefined, '初始无 apiKey');
@@ -342,7 +342,7 @@ async function run() {
                 model: 'deepseek-reasoner',
             }));
 
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
             const config = mgr.get();
 
@@ -357,7 +357,7 @@ async function run() {
     await testAsync('reset 重置为默认配置', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
 
             mgr.set('apiKey', 'sk-to-reset');
@@ -378,7 +378,7 @@ async function run() {
     await testAsync('print 脱敏输出（不暴露完整 key）', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
 
             mgr.set('apiKey', 'sk-this-is-a-very-long-api-key-for-testing');
@@ -404,7 +404,7 @@ async function run() {
     await testAsync('print 短 key 完全隐藏', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
 
             mgr.set('apiKey', 'short');
@@ -430,7 +430,7 @@ async function run() {
     await testAsync('configManager 单例导出', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { configManager } = await import('../src/cli/config-manager.js');
+            const { configManager } = await import('../src/agent/cli/config-manager.js');
             const config = configManager.get();
 
             assertEqual(config.model, 'deepseek-v4-flash');
@@ -446,7 +446,7 @@ async function run() {
     await testAsync('默认字段 - provider/ollamaHost/ollamaModel', async () => {
         const { dir, env } = setupTempDir();
         try {
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
             const config = mgr.get();
 
@@ -463,7 +463,7 @@ async function run() {
         const { dir, env } = setupTempDir();
         try {
             process.env.AGENT_PROVIDER = 'mock';
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
             const config = mgr.get();
 
@@ -479,7 +479,7 @@ async function run() {
         try {
             process.env.AGENT_OLLAMA_HOST = 'http://192.168.1.100:11434';
             process.env.AGENT_OLLAMA_MODEL = 'llama3.2:3b';
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
             const config = mgr.get();
 
@@ -498,7 +498,7 @@ async function run() {
                 provider: 'openai',
                 model: 'gpt-4o-mini',
             }));
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const mgr = new ConfigManager();
             const config = mgr.get();
 
@@ -519,14 +519,14 @@ async function run() {
             }));
 
             // 使用新 ConfigManager 实例，避免单例缓存导致读取旧 cwd 的配置
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const freshMgr = new ConfigManager();
             const cfg = freshMgr.get();
             assertEqual(cfg.provider, 'mock', 'provider 从文件读取');
             assertEqual(cfg.model, 'gpt-4o-mini', 'model 从文件读取');
 
             // 用配置值手动创建客户端（等价于 createLLMClientFromConfig 的逻辑）
-            const { createLLMClient } = await import('../src/llm/client-factory.js');
+            const { createLLMClient } = await import('../src/agent/llm/client-factory.js');
             const client = await createLLMClient({
                 provider: cfg.provider as any,
                 model: cfg.model,
@@ -547,13 +547,13 @@ async function run() {
                 provider: 'mock',
             }));
 
-            const { ConfigManager } = await import('../src/cli/config-manager.js');
+            const { ConfigManager } = await import('../src/agent/cli/config-manager.js');
             const freshMgr = new ConfigManager();
             const cfg = freshMgr.get();
             assertEqual(cfg.provider, 'mock', '配置读取为 mock');
 
             // overrides 模拟 provider 和 model 的覆盖
-            const { createLLMClient } = await import('../src/llm/client-factory.js');
+            const { createLLMClient } = await import('../src/agent/llm/client-factory.js');
             const client = await createLLMClient({
                 provider: cfg.provider as any,
                 model: 'custom-override-model',

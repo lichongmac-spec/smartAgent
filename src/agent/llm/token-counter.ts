@@ -89,6 +89,29 @@ export class TokenCounter {
     for (const msg of messages) {
       total += MESSAGE_OVERHEAD;
       total += this.count(msg.role);
+
+      // 可选名称字段（多角色对话标识说话人）
+      if (msg.name) {
+        total += this.count(msg.name);
+      }
+
+      // tool_call_id（role='tool' 时标识对应的工具调用）
+      if (msg.tool_call_id) {
+        total += this.count(msg.tool_call_id);
+      }
+
+      // tool_calls（role='assistant' 时的 Function Calling 内容）
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        for (const tc of msg.tool_calls) {
+          // function.name + function.arguments 占用 token
+          const fn = tc.function;
+          total += this.count(fn.name);
+          if (fn.arguments) {
+            total += this.count(typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments));
+          }
+        }
+      }
+
       total += this.count(msg.content);
     }
 

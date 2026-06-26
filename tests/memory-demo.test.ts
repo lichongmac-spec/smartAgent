@@ -7,9 +7,9 @@
  *  - 记忆管理器（MemoryManager 添加/检索/衰减/遗忘/更新重要性）
  */
 
-import { MockEmbeddingModel } from '../src/memory/embedding.js';
-import { VectorStore, cosineSimilarity } from '../src/memory/vector-store.js';
-import { MemoryManager } from '../src/memory/memory-manager.js';
+import { MockEmbeddingModel } from '../src/agent/memory/embedding.js';
+import { VectorStore, cosineSimilarity } from '../src/agent/memory/vector-store.js';
+import { MemoryManager } from '../src/agent/memory/memory-manager.js';
 
 let passCount = 0;
 let failCount = 0;

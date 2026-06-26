@@ -8,9 +8,9 @@
  *  - 类型系统: ILLMClient 接口合规
  */
 
-import { MockLLMClient } from '../src/llm/mock-client.js';
-import { createLLMClient, detectProvider } from '../src/llm/client-factory.js';
-import type { ILLMClient } from '../src/llm/types.js';
+import { MockLLMClient } from '../src/agent/llm/mock-client.js';
+import { createLLMClient, detectProvider } from '../src/agent/llm/client-factory.js';
+import type { ILLMClient } from '../src/agent/llm/types.js';
 
 let passCount = 0;
 let failCount = 0;

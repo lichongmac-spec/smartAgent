@@ -5,7 +5,7 @@
   "main": "electron-dist/electron/main/index.js",
   "type": "module",
   "bin": {
-    "agent": "./dist/cli/index.js"
+    "agent": "./dist/agent/cli/index.js"
   },
   "scripts": {
     "test": "tsx tests/test.ts",
@@ -17,11 +17,11 @@
     "test:full": "pnpm test && pnpm test:electron",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/cli/index.js",
-    "cli": "tsx src/cli/index.ts",
-    "dev": "nodemon --watch src --ext ts --exec tsx src/cli/index.ts",
-    "debug": "node --inspect-brk -r tsx/cjs src/cli/index.ts",
-    "debug:start": "tsx --inspect-brk src/cli/index.ts",
+    "start": "node dist/agent/cli/index.js",
+    "cli": "tsx src/agent/cli/index.ts",
+    "dev": "nodemon --watch src --ext ts --exec tsx src/agent/cli/index.ts",
+    "debug": "node --inspect-brk -r tsx/cjs src/agent/cli/index.ts",
+    "debug:start": "tsx --inspect-brk src/agent/cli/index.ts",
     "electron:build:renderer": "vite build --config src/electron/vite.config.ts",
     "electron:build:main": "tsc -p tsconfig.electron.json",
     "electron:build": "pnpm electron:build:main && pnpm electron:build:renderer",

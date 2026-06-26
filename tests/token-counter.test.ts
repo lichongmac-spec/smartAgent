@@ -8,8 +8,8 @@
  *  - TokenCounter.truncateToBudget: 截断功能
  */
 
-import { TokenCounter } from '../src/llm/token-counter.js';
-import type { Message } from '../src/llm/types.js';
+import { TokenCounter } from '../src/agent/llm/token-counter.js';
+import type { Message } from '../src/agent/llm/types.js';
 
 let passCount = 0;
 let failCount = 0;
@@ -262,6 +262,99 @@ async function main() {
   } catch (e) {
     failCount++;
     console.log(`  ❌ countMessages 空列表: ${(e as Error).message}`);
+  }
+
+  // ============================================================
+  //  countMessages - 带 tool_calls 的 assistant 消息
+  // ============================================================
+
+  testCount++;
+  try {
+    const messages: Message[] = [
+      { role: 'user', content: '1+1等于几' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_123',
+            type: 'function',
+            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+          },
+        ],
+      },
+    ];
+    const total = counter.countMessages(messages);
+    const withoutToolCalls = counter.countMessages([
+      { role: 'user', content: '1+1等于几' },
+      { role: 'assistant', content: '2' },
+    ]);
+    // 带 tool_calls 的消息应有更多 Token
+    assertGt(total, withoutToolCalls, `tool_calls 消息 (${total}) 不应少于普通消息 (${withoutToolCalls})`);
+    passCount++;
+    console.log(`  ✅ countMessages 含 tool_calls (${total} tokens)`);
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ countMessages 含 tool_calls: ${(e as Error).message}`);
+  }
+
+  // ============================================================
+  //  countMessages - 带 name 和 tool_call_id
+  // ============================================================
+
+  testCount++;
+  try {
+    const messages: Message[] = [
+      { role: 'user', content: '查天气', name: '张三' },
+      {
+        role: 'tool',
+        content: '{"temperature": 25}',
+        tool_call_id: 'call_weather_001',
+      },
+    ];
+    const total = counter.countMessages(messages);
+    assertGt(total, 10, `带 name/tool_call_id 消息应有足够 Token，实际 ${total}`);
+    passCount++;
+    console.log(`  ✅ countMessages 含 name 和 tool_call_id (${total} tokens)`);
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ countMessages 含 name 和 tool_call_id: ${(e as Error).message}`);
+  }
+
+  // ============================================================
+  //  countMessages - 多个 tool_calls
+  // ============================================================
+
+  testCount++;
+  try {
+    const single: Message[] = [
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: 'c1', type: 'function',
+          function: { name: 'read_file', arguments: '{"path":"a.txt"}' },
+        }],
+      },
+    ];
+    const multi: Message[] = [
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'c1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.txt"}' } },
+          { id: 'c2', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.txt"}' } },
+        ],
+      },
+    ];
+    const singleCount = counter.countMessages(single);
+    const multiCount = counter.countMessages(multi);
+    assertGt(multiCount, singleCount, `多个 tool_calls (${multiCount}) 应 > 单个 (${singleCount})`);
+    passCount++;
+    console.log(`  ✅ countMessages 多个 tool_calls (1=${singleCount}, 2=${multiCount})`);
+  } catch (e) {
+    failCount++;
+    console.log(`  ❌ countMessages 多个 tool_calls: ${(e as Error).message}`);
   }
 
   // ============================================================

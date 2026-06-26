@@ -24,9 +24,7 @@ const CONDITIONS = ['晴 ☀️', '多云 ⛅', '小雨 🌧️', '阴天 ☁️
 const getWeather: ToolExecutor = async (args) => {
   const { city } = args as { city: string };
 
-  // 真实项目可调用：
-  // const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`);
-  // const data = await res.json();
+  // 真实项目中可接入 wttr.in 等天气 API 获取实际数据
   const temperature = Math.round(Math.random() * 20 + 10); // 10-30°C
   const condition = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
 

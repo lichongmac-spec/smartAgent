@@ -23,7 +23,7 @@ import {
     setErrorReporter,
     systemError,
     userError
-} from '../src/cli/error-handler.js';
+} from '../src/agent/cli/error-handler.js';
 
 // ============================================================
 //  测试辅助

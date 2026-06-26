@@ -15,11 +15,11 @@ import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import pc from 'picocolors';
-import { TokenCounter } from '../src/llm/token-counter.js';
+import { TokenCounter } from '../src/agent/llm/token-counter.js';
 
 // ---- 动态导入被测模块 ----
 // import.meta.url-based dynamic imports for ESM compatibility
-const modulePath = '../src/cli/context-aware.js';
+const modulePath = '../src/agent/cli/context-aware.js';
 
 // ============================================================
 //  测试框架

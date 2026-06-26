@@ -12,7 +12,7 @@ import pc from 'picocolors';
 import {
     renderTable,
     renderKVTable,
-} from '../src/cli/utils/table.js';
+} from '../src/agent/cli/utils/table.js';
 
 // ============================================================
 //  测试框架（轻量）
@@ -189,7 +189,7 @@ async function main(): Promise<void> {
 
     await runTest('集成 — config list 表格输出', async () => {
         // 动态加载 configManager 来模拟
-        const { configManager } = await import('../src/cli/config-manager.js');
+        const { configManager } = await import('../src/agent/cli/config-manager.js');
         const config = configManager.get();
 
         const displayConfig: Record<string, unknown> = {};

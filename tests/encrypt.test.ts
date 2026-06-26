@@ -8,7 +8,7 @@
  *   - decrypt 对非加密字符串原样返回（向后兼容）
  */
 
-import { encrypt, decrypt, isEncrypted } from '../src/cli/utils/encrypt.js';
+import { encrypt, decrypt, isEncrypted } from '../src/agent/cli/utils/encrypt.js';
 
 // ============================================================
 //  测试辅助

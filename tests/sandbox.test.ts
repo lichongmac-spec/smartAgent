@@ -11,7 +11,7 @@
  *  - 创建/读取/清理的完整流程
  */
 
-import { Sandbox } from '../src/sandbox/sandbox.js';
+import { Sandbox } from '../src/agent/sandbox/sandbox.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';

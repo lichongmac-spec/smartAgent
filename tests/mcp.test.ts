@@ -53,18 +53,18 @@ function summarize(): void {
   if (failCount > 0) process.exit(1);
 }
 
-import { ToolRegistry } from '../src/tools/registry.js';
+import { ToolRegistry } from '../src/agent/tools/registry.js';
 import {
   CALCULATOR_DEFINITION,
   calculatorExecutor,
-} from '../src/tools/builtin/calculator.js';
+} from '../src/agent/tools/builtin/calculator.js';
 
-import { MCPServer } from '../src/mcp/server.js';
-import { MCPClient } from '../src/mcp/client.js';
+import { MCPServer } from '../src/agent/mcp/server.js';
+import { MCPClient } from '../src/agent/mcp/client.js';
 import {
   serializeMessage,
   deserializeMessage,
-} from '../src/mcp/transport.js';
+} from '../src/agent/mcp/transport.js';
 import {
   buildNamespacedName,
   parseNamespacedName,
@@ -73,7 +73,7 @@ import {
   extractToolResultText,
   createMCPToolExecutor,
   MCPToolExecutorFactory,
-} from '../src/mcp/tool-adapter.js';
+} from '../src/agent/mcp/tool-adapter.js';
 import {
   MCPError,
   MCPConnectionError,
@@ -81,7 +81,7 @@ import {
   MCPInvalidParamsError,
   ErrorCode,
   MCP_VERSION,
-} from '../src/mcp/types.js';
+} from '../src/agent/mcp/types.js';
 import type {
   JsonRpcMessage,
   JsonRpcRequest,
@@ -91,7 +91,7 @@ import type {
   MCPTransport,
   CallToolResult,
   MCPTool,
-} from '../src/mcp/types.js';
+} from '../src/agent/mcp/types.js';
 
 // ================================================================
 //  辅助：进程内测试 Transport（复用 Demo 模式）

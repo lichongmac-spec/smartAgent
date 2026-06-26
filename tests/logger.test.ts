@@ -28,7 +28,7 @@ import {
     createProgressBar,
     progressTick,
     clearProgressLine,
-} from '../src/cli/logger.js';
+} from '../src/agent/cli/logger.js';
 
 // ============================================================
 //  测试辅助

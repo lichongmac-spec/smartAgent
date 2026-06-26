@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
-import App from '../../electron/renderer/src/App.js';
+import App from '../../src/electron/renderer/src/App.js';
 
 describe('App Component', () => {
   // ─── 渲染验证 ───────────────────────────────

@@ -20,7 +20,7 @@ import {
     loadHistory,
     saveHistory,
     searchHistory,
-} from '../src/cli/utils/history.js';
+} from '../src/agent/cli/utils/history.js';
 
 // 使用临时目录避免沙箱权限问题
 const historyDir = mkdtempSync(join(tmpdir(), 'smartagent-history-test-'));

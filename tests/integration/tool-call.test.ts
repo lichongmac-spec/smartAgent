@@ -16,7 +16,7 @@ import {
     formatToolCallSummary,
     parseToolCallFromChunk,
     type ToolCall,
-} from '../../src/cli/utils/tool-display.js';
+} from '../../src/agent/cli/utils/tool-display.js';
 
 let testCount = 0;
 let passCount = 0;

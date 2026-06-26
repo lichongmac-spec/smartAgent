@@ -17,7 +17,7 @@ import {
     runEnhancedTasks,
     type EnhancedTaskDef,
     type TaskContext,
-} from '../src/cli/utils/progress-enhanced.js';
+} from '../src/agent/cli/utils/progress-enhanced.js';
 
 // ============================================================
 //  测试辅助

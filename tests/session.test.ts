@@ -2,8 +2,8 @@
  * session.test.ts - 基础测试
  */
 
-import { sessionManager } from '../src/cli/utils/session.js';
-import { ContextManager } from '../src/cli/context-aware.js';
+import { sessionManager } from '../src/agent/cli/utils/session.js';
+import { ContextManager } from '../src/agent/cli/context-aware.js';
 
 let passCount = 0;
 let failCount = 0;

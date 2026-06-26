@@ -14,6 +14,7 @@
 
 import { promises as fs } from 'fs';
 import { normalize, relative } from 'path';
+import { exec } from 'child_process';
 
 // ── 配置 ──
 
@@ -199,10 +200,10 @@ export class Sandbox {
   // ── 命令执行 ──
 
   /**
-   * 安全执行命令（模拟）
+   * 安全执行命令
    *
-   * 生产环境可用 child_process.exec 但需慎重。
-   * 此处仅演示命令安全校验逻辑，不真正执行。
+   * 经过命令黑白名单校验后，在子进程中实际执行命令。
+   * 内置超时保护和输出大小限制。
    */
   async executeCommand(command: string): Promise<SandboxResult<string>> {
     const startTime = Date.now();
@@ -211,9 +212,39 @@ export class Sandbox {
         throw new Error(`命令 "${command}" 被禁止执行`);
       }
 
+      const cwd = this.config.allowedRoot || process.cwd();
+
+      const output = await this.withTimeout(
+        new Promise<string>((resolve, reject) => {
+          exec(
+            command,
+            {
+              cwd,
+              timeout: this.config.timeout,
+              maxBuffer: this.config.maxFileSize,
+              shell: '/bin/sh',
+            },
+            (err, stdout, stderr) => {
+              if (err) {
+                // 命令执行失败时，返回 stderr + stdout 的组合内容
+                const combined = [stderr, stdout].filter(Boolean).join('\n').trim();
+                if (combined) {
+                  resolve(`[exit ${err.code}] ${combined}`);
+                } else {
+                  reject(err);
+                }
+              } else {
+                resolve(stdout.trim() || stderr.trim() || '(无输出)');
+              }
+            },
+          );
+        }),
+        this.config.timeout,
+      );
+
       return {
         success: true,
-        data: `[模拟执行] 命令 "${command}" 已执行，结果：成功（演示）`,
+        data: output,
         duration: Date.now() - startTime,
       };
     } catch (error) {

@@ -21,9 +21,7 @@ import type { ISkill, SkillContext } from '../types.js';
 const sendEmail: ToolExecutor = async (args) => {
   const { to, subject, body } = args as { to: string; subject: string; body: string };
 
-  // 真实项目可调用 nodemailer：
-  // const transporter = nodemailer.createTransport({ ... });
-  // await transporter.sendMail({ to, subject, body });
+  // 真实项目中可接入 nodemailer 等 SMTP 库实现邮件发送
   console.log(`📧 [Email Skill] 发送邮件到 ${to}`);
   console.log(`   主题: ${subject}`);
   console.log(`   正文: ${body.slice(0, 80)}...`);

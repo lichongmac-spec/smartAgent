@@ -1,270 +1,227 @@
 /**
- * Electron 集成测试
+ * Electron 集成测试 — Stream 版
  *
- * 测试 IPC 完整链路：preload API → ipcMain.handle → agent-service → 返回。
- * 模拟真实的 Electron IPC 调用流程。
- *
- * 注意：由于 vi.mock 的 hoisting 特性，所有 mock 对象必须在模块顶层创建。
- * 集成测试通过直接调用 registerIpcHandlers 并手动调用 handler 来验证链路。
+ * 测试 IPC 完整链路：preload API → ipcMain handler → agent-service → 返回。
+ * 新链路基于流式通信：
+ *   window.agent.askStream → ipcRenderer.send('agent:ask-stream') → on('agent:chunk')
+ *   window.agent.interrupt → ipcRenderer.send('agent:interrupt')
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ─── Mock AgentService ────────────────────────
 
-vi.mock('../../electron/main/agent-service.js', () => ({
+vi.mock('../../src/electron/main/agent-service.js', () => ({
   AgentService: {
     getInstance: () => ({
       ask: vi.fn().mockResolvedValue('[Agent] Hello World'),
       askStream: vi.fn().mockImplementation(
         async (_prompt: string, _sid: string | undefined, onChunk: (c: string) => void) => {
-          onChunk('Streaming ');
-          onChunk('response');
+          onChunk('你好');
+          onChunk('，');
+          onChunk('世界');
         }
       ),
       interrupt: vi.fn(),
       getTools: vi.fn().mockReturnValue([
         { name: 'read_file', description: 'Read a file', enabled: true },
-        { name: 'write_file', description: 'Write a file', enabled: true },
       ]),
-      searchMemory: vi.fn().mockReturnValue([
-        { id: 'm1', content: 'Remember this', score: 0.95 },
-      ]),
+      searchMemory: vi.fn().mockReturnValue([]),
       getConfig: vi.fn().mockImplementation((key: string) => {
         const store: Record<string, unknown> = { provider: 'deepseek', model: 'deepseek-v4-flash' };
         return store[key] ?? null;
       }),
       setConfig: vi.fn(),
-      getScheduledTasks: vi.fn().mockReturnValue([
-        { id: 't1', name: 'Daily Report', cron: '0 9 * * *', enabled: true },
-      ]),
+      getScheduledTasks: vi.fn().mockReturnValue([]),
       addScheduledTask: vi.fn().mockReturnValue('task_99999'),
-      getHealthStatus: vi.fn().mockReturnValue({
-        healthy: true,
-        checks: { llm: true, disk: true, memory: true },
-      }),
-      getQueueStats: vi.fn().mockReturnValue({
-        pending: 2,
-        running: 1,
-        completed: 100,
-      }),
+      getHealthStatus: vi.fn().mockReturnValue({ healthy: true, checks: {} }),
+      getQueueStats: vi.fn().mockReturnValue({ pending: 0, running: 0, completed: 0 }),
     }),
   },
 }));
 
 // ─── Mock Electron — 模块级变量供 vi.mock 闭包 ──
 
-const mockIpcRenderer = {
-  invoke: vi.fn(),
-  on: vi.fn(),
-  off: vi.fn(),
-};
-
+const mockIpcRendererSend = vi.fn();
+const mockIpcRendererOn = vi.fn();
+const mockIpcRendererRemoveListener = vi.fn();
 const mockContextBridgeExpose = vi.fn();
 
 vi.mock('electron', () => ({
   contextBridge: { exposeInMainWorld: mockContextBridgeExpose },
-  ipcRenderer: mockIpcRenderer,
+  ipcRenderer: {
+    send: mockIpcRendererSend,
+    on: mockIpcRendererOn,
+    removeListener: mockIpcRendererRemoveListener,
+  },
 }));
 
-import { registerIpcHandlers } from '../../electron/main/ipc-handlers.js';
+import { registerIpcHandlers } from '../../src/electron/main/ipc-handlers.js';
 
-describe('Electron Integration — IPC Full Chain', () => {
+describe('Electron Integration — Stream IPC Chain', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let exposedAPI: any;
+  // Store ipcRenderer.on callbacks per channel for event dispatching
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let rendererOnHandlers: Record<string, (...args: any[]) => void>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    rendererOnHandlers = {};
 
-    // Build handlers map
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers: Record<string, (...args: any[]) => Promise<any>> = {};
+    // Wire ipcRenderer.on to store callbacks
+    mockIpcRendererOn.mockImplementation(
+      (channel: string, handler: (...args: unknown[]) => void) => {
+        rendererOnHandlers[channel] = handler;
+      }
+    );
+
+    // Wire ipcRenderer.removeListener to clear callbacks
+    mockIpcRendererRemoveListener.mockImplementation(
+      (channel: string) => {
+        delete rendererOnHandlers[channel];
+      }
+    );
+
+    // Build IPC handler map from ipc-handlers.ts
+    const ipcOnHandlers: Record<string, (...args: unknown[]) => void> = {};
+    const ipcHandleHandlers: Record<string, (...args: unknown[]) => unknown> = {};
 
     const mockIpcMain = {
       handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
-        handlers[channel] = handler;
+        ipcHandleHandlers[channel] = handler;
       }),
-    };
+      on: vi.fn((channel: string, handler: (...args: unknown[]) => void) => {
+        ipcOnHandlers[channel] = handler;
+      }),
+    } as unknown as Electron.IpcMain;
 
     registerIpcHandlers(mockIpcMain);
 
-    // Wire invoke to dispatch through handlers
-    mockIpcRenderer.invoke.mockImplementation(
-      async (channel: string, ...args: unknown[]) => {
-        const handler = handlers[channel];
-        if (!handler) throw new Error(`No handler for: ${channel}`);
-        const mockEvent = { sender: { send: vi.fn() } };
-        return handler(mockEvent, ...args);
+    // Wire ipcRenderer.send to dispatch through main process on-handlers
+    mockIpcRendererSend.mockImplementation(
+      (channel: string, ...args: unknown[]) => {
+        // Try on-handlers first (streaming channels)
+        const onHandler = ipcOnHandlers[channel];
+        if (onHandler) {
+          // Create sender that dispatches back to renderer listeners
+          const sender = {
+            send: (respChannel: string, ...respArgs: unknown[]) => {
+              const rendererHandler = rendererOnHandlers[respChannel];
+              if (rendererHandler) {
+                rendererHandler({}, ...respArgs);
+              }
+            },
+          };
+          const mockEvent = { sender };
+          // await async handler so stream-end events dispatch
+          const handlerResult = onHandler(mockEvent, args[0]);
+          if (handlerResult instanceof Promise) await handlerResult;
+          return;
+        }
+        // fallback: handle-based channels
+        const handleHandler = ipcHandleHandlers[channel];
+        if (handleHandler) {
+          handleHandler({}, args[0]);
+        }
       }
     );
 
     // Reload preload to capture exposed API
     vi.resetModules();
-    await import('../../electron/preload/index.js');
+    await import('../../src/electron/preload/index.js');
 
-    // Extract the exposed API
     const callArgs = mockContextBridgeExpose.mock.calls.find(
-      (call: unknown[]) => call[0] === 'electron'
+      (call: unknown[]) => call[0] === 'agent'
     );
     exposedAPI = callArgs ? callArgs[1] : null;
   });
 
-  // ─── agent:ask 完整链路 ──────────────────────
+  // ─── askStream 完整链路 ─────────────────────
 
-  it('should complete askAgent IPC chain', async () => {
-    expect(exposedAPI).not.toBeNull();
-    const result = await exposedAPI.askAgent('Hello');
-    expect(result).toEqual({ answer: '[Agent] Hello World' });
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(
-      'agent:ask',
-      { prompt: 'Hello', sessionId: undefined }
-    );
+  it('should complete askStream IPC chain', () => {
+    const chunks: string[] = [];
+    const onChunk = (text: string) => chunks.push(text);
+    const onDone = vi.fn();
+    const onError = vi.fn();
+
+    exposedAPI.askStream('Hello', onChunk, onDone, onError);
+
+    // Stream is synchronous in our mock — chunks should already be received
+    expect(chunks).toEqual(['你好', '，', '世界']);
   });
 
-  it('should pass sessionId through askAgent', async () => {
-    await exposedAPI.askAgent('Hi', 'session-abc');
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(
-      'agent:ask',
-      { prompt: 'Hi', sessionId: 'session-abc' }
-    );
-  });
-
-  it('should return error for empty prompt via IPC chain', async () => {
-    const result = await exposedAPI.askAgent('');
-    expect(result).toHaveProperty('error');
-    expect(result.error).toContain('Invalid prompt');
-  });
-
-  // ─── agent:ask-stream 完整链路 ───────────────
-
-  it('should complete askAgentStream IPC chain', async () => {
-    const onChunk = vi.fn();
-    const onEnd = vi.fn();
-
-    await exposedAPI.askAgentStream('Stream test', onChunk, onEnd);
-
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(
+  it('should send correct IPC message for askStream', () => {
+    exposedAPI.askStream('Test prompt', vi.fn(), vi.fn(), vi.fn());
+    expect(mockIpcRendererSend).toHaveBeenCalledWith(
       'agent:ask-stream',
-      { prompt: 'Stream test', sessionId: undefined }
+      { prompt: 'Test prompt' }
     );
-    expect(mockIpcRenderer.on).toHaveBeenCalledWith('agent:chunk', expect.any(Function));
-    expect(mockIpcRenderer.on).toHaveBeenCalledWith('agent:stream-end', expect.any(Function));
   });
 
-  it('should clean up listeners on stream end', () => {
+  it('should register chunk listener on askStream', () => {
+    exposedAPI.askStream('Hi', vi.fn(), vi.fn(), vi.fn());
+    expect(mockIpcRendererOn).toHaveBeenCalledWith('agent:chunk', expect.any(Function));
+  });
+
+  it('should clean up listener and call onDone on stream end', () => {
     const onChunk = vi.fn();
-    const onEnd = vi.fn();
+    const onDone = vi.fn();
 
-    exposedAPI.askAgentStream('test', onChunk, onEnd);
+    exposedAPI.askStream('Hi', onChunk, onDone, vi.fn());
 
-    const endListenerCalls = mockIpcRenderer.on.mock.calls.filter(
-      (call: unknown[]) => call[0] === 'agent:stream-end'
-    );
-    expect(endListenerCalls.length).toBeGreaterThan(0);
-    const endListener = endListenerCalls[0][1];
-
-    endListener();
-    expect(mockIpcRenderer.off).toHaveBeenCalledWith('agent:chunk', expect.any(Function));
-    expect(mockIpcRenderer.off).toHaveBeenCalledWith('agent:stream-end', expect.any(Function));
-    expect(onEnd).toHaveBeenCalled();
+    // onDone should be called when stream ends
+    expect(onDone).toHaveBeenCalled();
+    expect(mockIpcRendererRemoveListener).toHaveBeenCalledWith('agent:chunk', expect.any(Function));
   });
 
-  // ─── agent:interrupt ────────────────────────
+  // ─── error handling ─────────────────────────
 
-  it('should complete interruptAgent IPC chain', async () => {
-    const result = await exposedAPI.interruptAgent();
-    expect(result).toEqual({ success: true });
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith('agent:interrupt');
+  it('should call onError and cleanup on error', () => {
+    // Override ipcOnHandlers for this test to simulate error
+    // Actually, since our mock AgentService always succeeds, we test this
+    // indirectly: if the ipc-handlers.ts returns an error, the preload's
+    // chunk handler calls onError. Let's manually invoke the chunk handler
+    // to verify error path.
+
+    const onChunk = vi.fn();
+    const onDone = vi.fn();
+    const onError = vi.fn();
+
+    exposedAPI.askStream('Error case', onChunk, onDone, onError);
+
+    // Get the registered chunk handler
+    const chunkHandler = rendererOnHandlers['agent:chunk'];
+    expect(chunkHandler).toBeDefined();
+
+    // Call it directly with error data (simulating main process error response)
+    chunkHandler({}, { chunk: '', done: true, error: 'API Key missing' });
+
+    expect(onError).toHaveBeenCalledWith('API Key missing');
   });
 
-  // ─── tools:list ─────────────────────────────
+  // ─── interrupt 完整链路 ─────────────────────
 
-  it('should complete getTools IPC chain', async () => {
-    const result = await exposedAPI.getTools();
-    expect(result.tools).toHaveLength(2);
-    expect(result.tools[0].name).toBe('read_file');
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith('tools:list');
+  it('should complete interrupt IPC chain', () => {
+    exposedAPI.interrupt();
+    expect(mockIpcRendererSend).toHaveBeenCalledWith('agent:interrupt');
   });
 
-  // ─── memory:search ──────────────────────────
+  // ─── name / platform ────────────────────────
 
-  it('should complete searchMemory IPC chain', async () => {
-    const result = await exposedAPI.searchMemory('keyword', 5);
-    expect(result.memories).toHaveLength(1);
-    expect(result.memories[0].id).toBe('m1');
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(
-      'memory:search',
-      { query: 'keyword', limit: 5 }
-    );
+  it('should expose app name', () => {
+    expect(exposedAPI.name).toBe('SmartAgent Desktop');
   });
 
-  it('should return error for empty memory query', async () => {
-    const result = await exposedAPI.searchMemory('');
-    expect(result).toHaveProperty('error');
+  it('should expose platform', () => {
+    expect(typeof exposedAPI.platform).toBe('string');
   });
 
-  // ─── config:get/set ─────────────────────────
+  // ─── interrupt sends correct message ────────
 
-  it('should complete getConfig IPC chain', async () => {
-    const result = await exposedAPI.getConfig('provider');
-    expect(result).toEqual({ value: 'deepseek' });
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith('config:get', { key: 'provider' });
-  });
-
-  it('should return null for unknown config key', async () => {
-    const result = await exposedAPI.getConfig('unknown_key');
-    expect(result).toEqual({ value: null });
-  });
-
-  it('should complete setConfig IPC chain', async () => {
-    const result = await exposedAPI.setConfig('theme', 'dark');
-    expect(result).toEqual({ success: true });
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(
-      'config:set',
-      { key: 'theme', value: 'dark' }
-    );
-  });
-
-  // ─── scheduler:list/add ─────────────────────
-
-  it('should complete getScheduledTasks IPC chain', async () => {
-    const result = await exposedAPI.getScheduledTasks();
-    expect(result.tasks).toHaveLength(1);
-    expect(result.tasks[0].name).toBe('Daily Report');
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith('scheduler:list');
-  });
-
-  it('should complete addScheduledTask IPC chain', async () => {
-    const result = await exposedAPI.addScheduledTask('New Task', '*/5 * * * *', 'echo run');
-    expect(result).toEqual({ id: 'task_99999' });
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith('scheduler:add', {
-      name: 'New Task',
-      cron: '*/5 * * * *',
-      action: 'echo run',
-    });
-  });
-
-  it('should reject scheduler:add with missing fields', async () => {
-    const result = await exposedAPI.addScheduledTask('', '', '');
-    expect(result).toHaveProperty('error');
-  });
-
-  // ─── heartbeat:status ───────────────────────
-
-  it('should complete getHeartbeatStatus IPC chain', async () => {
-    const result = await exposedAPI.getHeartbeatStatus();
-    expect(result.healthy).toBe(true);
-    expect(result.checks).toEqual({ llm: true, disk: true, memory: true });
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith('heartbeat:status');
-  });
-
-  // ─── queue:stats ────────────────────────────
-
-  it('should complete getQueueStats IPC chain', async () => {
-    const result = await exposedAPI.getQueueStats();
-    expect(result.pending).toBe(2);
-    expect(result.running).toBe(1);
-    expect(result.completed).toBe(100);
-    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith('queue:stats');
+  it('should call interrupt via IPC', () => {
+    exposedAPI.interrupt();
+    expect(mockIpcRendererSend).toHaveBeenCalledTimes(1);
+    expect(mockIpcRendererSend).toHaveBeenCalledWith('agent:interrupt');
   });
 });

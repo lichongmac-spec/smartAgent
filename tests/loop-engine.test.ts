@@ -10,10 +10,10 @@
  *  - 错误处理（read_file 不存在文件、calculator 错误表达式）
  */
 
-import { MockLLMClient } from '../src/llm/mock-client.js';
-import { ToolRegistry } from '../src/tools/registry.js';
-import { createDefaultToolRegistry } from '../src/tools/builtin/index.js';
-import { LoopEngine } from '../src/core/loop-engine.js';
+import { MockLLMClient } from '../src/agent/llm/mock-client.js';
+import { ToolRegistry } from '../src/agent/tools/registry.js';
+import { createDefaultToolRegistry } from '../src/agent/tools/builtin/index.js';
+import { LoopEngine } from '../src/agent/core/loop-engine.js';
 import { readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join } from 'path';
 

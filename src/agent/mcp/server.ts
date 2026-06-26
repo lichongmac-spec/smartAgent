@@ -352,7 +352,6 @@ export class MCPServer {
    * 未来可以接入文件系统等作为资源。
    */
   private async _handleListResources(): Promise<ListResourcesResult> {
-    // TODO: 未来可以暴露文件系统、数据库等作为 MCP 资源
     return { resources: [] };
   }
 

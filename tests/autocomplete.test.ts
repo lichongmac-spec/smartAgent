@@ -19,7 +19,7 @@ import {
     filePathCompleter,
     configKeyCompleter,
     commonPrefix,
-} from '../src/cli/utils/autocomplete.js';
+} from '../src/agent/cli/utils/autocomplete.js';
 
 // ============================================================
 //  测试工具

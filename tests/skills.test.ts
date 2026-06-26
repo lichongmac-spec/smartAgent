@@ -14,12 +14,12 @@
  *  - integrateSkills 集成流程
  */
 
-import { SkillLoader } from '../src/skills/loader.js';
-import { integrateSkills } from '../src/skills/integration.js';
-import { emailSkill, weatherSkill } from '../src/skills/index.js';
-import type { ISkill } from '../src/skills/types.js';
-import type { ToolDefinition } from '../src/llm/types.js';
-import { ToolRegistry } from '../src/tools/registry.js';
+import { SkillLoader } from '../src/agent/skills/loader.js';
+import { integrateSkills } from '../src/agent/skills/integration.js';
+import { emailSkill, weatherSkill } from '../src/agent/skills/index.js';
+import type { ISkill } from '../src/agent/skills/types.js';
+import type { ToolDefinition } from '../src/agent/llm/types.js';
+import { ToolRegistry } from '../src/agent/tools/registry.js';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

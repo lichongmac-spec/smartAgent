@@ -13,7 +13,7 @@
  *   8. registerAliases — 拦截 parse 方法
  */
 
-import { getAliasMap, expandAlias } from '../src/cli/utils/alias.js';
+import { getAliasMap, expandAlias } from '../src/agent/cli/utils/alias.js';
 
 // ============================================================
 //  测试辅助

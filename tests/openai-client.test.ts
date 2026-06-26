@@ -11,9 +11,9 @@ import {
   ContentFilterError,
   isAuthError,
   RateLimitError,
-} from '../src/llm/errors.js';
-import { DeepSeekClient, OpenAIClient } from '../src/llm/openai-client.js';
-import type { ILLMClient } from '../src/llm/types.js';
+} from '../src/agent/llm/errors.js';
+import { DeepSeekClient, OpenAIClient } from '../src/agent/llm/openai-client.js';
+import type { ILLMClient } from '../src/agent/llm/types.js';
 
 let passCount = 0;
 let failCount = 0;
@@ -174,8 +174,8 @@ async function main() {
   testCount++;
   try {
     // 验证 ToolCall 类型可用（不需要真实 API）
-    const { OpenAIClient } = await import('../src/llm/openai-client.js');
-    const { DeepSeekClient } = await import('../src/llm/openai-client.js');
+    const { OpenAIClient } = await import('../src/agent/llm/openai-client.js');
+    const { DeepSeekClient } = await import('../src/agent/llm/openai-client.js');
     assert(typeof OpenAIClient === 'function', 'OpenAIClient import');
     assert(typeof DeepSeekClient === 'function', 'DeepSeekClient import');
     passCount++;

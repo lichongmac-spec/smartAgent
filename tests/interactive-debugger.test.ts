@@ -2,8 +2,8 @@
  * interactive-debugger.test.ts - 基础测试
  */
 
-import { InteractiveDebugger, dumpContext, dumpToolCalls } from '../src/cli/utils/interactive-debugger.js';
-import { ContextManager } from '../src/cli/context-aware.js';
+import { InteractiveDebugger, dumpContext, dumpToolCalls } from '../src/agent/cli/utils/interactive-debugger.js';
+import { ContextManager } from '../src/agent/cli/context-aware.js';
 
 let passCount = 0;
 let failCount = 0;

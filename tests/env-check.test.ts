@@ -18,7 +18,7 @@ import {
     isGlobalInstall,
     isContainer,
     printEnvInfo,
-} from '../src/cli/env-check.js';
+} from '../src/agent/cli/env-check.js';
 
 // ============================================================
 //  测试辅助
@@ -229,7 +229,7 @@ async function main() {
         const pathPart = modulePath.replace('file://', '');
 
         // 本地开发路径不应命中全局安装（关键：确保 fileURLToPath 不会误判）
-        // 本地路径形如 /Users/.../SmartAgent/src/cli/env-check.ts
+        // 本地路径形如 /Users/.../SmartAgent/src/agent/cli/env-check.ts
         assert(
             !pathPart.includes('/node_modules/.pnpm/') ||
             pathPart.includes('/SmartAgent/node_modules/'),

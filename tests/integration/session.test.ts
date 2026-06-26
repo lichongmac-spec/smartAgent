@@ -22,8 +22,8 @@ const SESSIONS_DIR = join(TEST_DIR, 'sessions');
 process.env.SMARTAGENT_SESSIONS_DIR = SESSIONS_DIR;
 
 // 动态导入（确保 env var 已设置后再初始化 session 模块）
-const { SessionManager } = await import('../../src/cli/utils/session.js');
-const { ContextManager } = await import('../../src/cli/context-aware.js');
+const { SessionManager } = await import('../../src/agent/cli/utils/session.js');
+const { ContextManager } = await import('../../src/agent/cli/context-aware.js');
 
 // ============================================================
 //  测试工具

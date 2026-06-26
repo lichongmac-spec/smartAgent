@@ -21,7 +21,7 @@ import {
     withTimeout,
     withTimeoutAndSignal,
     TimeoutError,
-} from '../src/cli/utils/timeout.js';
+} from '../src/agent/cli/utils/timeout.js';
 
 // ============================================================
 //  测试工具

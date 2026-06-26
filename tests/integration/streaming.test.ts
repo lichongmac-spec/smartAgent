@@ -11,8 +11,8 @@
  *   - 中文/特殊字符流式输出
  */
 
-import { streamResponse, printStream } from '../../src/cli/context-aware.js';
-import { StreamHandler, createMockSSEStream, streamToStdout } from '../../src/cli/utils/stream-handler.js';
+import { streamResponse, printStream } from '../../src/agent/cli/context-aware.js';
+import { StreamHandler, createMockSSEStream, streamToStdout } from '../../src/agent/cli/utils/stream-handler.js';
 
 let testCount = 0;
 let passCount = 0;

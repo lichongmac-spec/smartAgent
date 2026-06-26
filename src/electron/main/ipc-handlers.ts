@@ -22,31 +22,27 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     }
   });
 
-  ipcMain.handle('agent:ask-stream', async (event, params: { prompt: string; sessionId?: string }) => {
+  ipcMain.on('agent:ask-stream', async (event, params: { prompt: string }) => {
     try {
       if (!params.prompt || typeof params.prompt !== 'string') {
-        const sender = event.sender;
-        sender.send('agent:chunk', 'Error: Invalid prompt');
-        sender.send('agent:stream-end');
+        event.sender.send('agent:chunk', { chunk: '', done: true, error: '请输入有效的问题' });
         return;
       }
-      await agentService.askStream(params.prompt, params.sessionId, (chunk: string) => {
-        event.sender.send('agent:chunk', chunk);
+      await agentService.askStream(params.prompt, undefined, (chunk: string) => {
+        event.sender.send('agent:chunk', { chunk, done: false });
       });
-      event.sender.send('agent:stream-end');
+      event.sender.send('agent:chunk', { chunk: '', done: true });
     } catch (err) {
-      event.sender.send('agent:chunk', `Error: ${err instanceof Error ? err.message : String(err)}`);
-      event.sender.send('agent:stream-end');
+      event.sender.send('agent:chunk', {
+        chunk: '',
+        done: true,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 
-  ipcMain.handle('agent:interrupt', async () => {
-    try {
-      agentService.interrupt();
-      return { success: true };
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : String(err) };
-    }
+  ipcMain.on('agent:interrupt', () => {
+    agentService.interrupt();
   });
 
   // ─── 工具管理 ───────────────────────────────

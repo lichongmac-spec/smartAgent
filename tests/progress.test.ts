@@ -15,7 +15,7 @@ import { strict as assert } from 'assert';
 import {
     runTasks,
     type TaskDef,
-} from '../src/cli/utils/progress.js';
+} from '../src/agent/cli/utils/progress.js';
 
 // ============================================================
 //  测试工具

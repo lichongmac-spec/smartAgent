@@ -43,19 +43,6 @@ let _activeSpinner: Ora | null = null;
 //  颜色辅助函数（不污染 pc 对象）
 // ============================================================
 
-/**
- * 根据 _noColor 状态决定是否应用颜色
- * 用法：c('blue', 'Hello') 或 c.blue('Hello')
- */
-function c<T extends keyof typeof pc>(
-    color: T,
-    text: string | number | null | undefined
-): string {
-    if (_noColor) return String(text ?? '');
-    const fn = pc[color] as (s: string) => string;
-    return fn(String(text ?? ''));
-}
-
 // ============================================================
 //  配置注入（由入口 index.ts 调用）
 // ============================================================

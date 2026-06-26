@@ -1,180 +1,252 @@
 /**
- * AgentService 单元测试
+ * AgentService 单元测试 — DeepSeek 集成版
  *
- * 测试 electron/main/agent-service.ts 的核心逻辑。
- * 覆盖：单例模式、ask/askStream/interrupt、工具列表、
- * 配置读写、调度任务、健康状态、队列统计。
+ * 测试 src/electron/main/agent-service.ts 的核心逻辑。
+ * LoopEngine / DeepSeekClient / ContextManager 均被 mock，
+ * 不发起真实网络请求，不 mock fs（通过环境变量控制 API Key）。
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { AgentService } from '../../electron/main/agent-service.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-describe('AgentService', () => {
+// ── vi.hoisted: 共享 mock 实例 ──
+const { mockEngine, mockToolRegistry, mockContextManagerObj } = vi.hoisted(() => ({
+  mockEngine: {
+    run: vi.fn(),
+    runStream: vi.fn(),
+    interrupt: vi.fn(),
+    getState: vi.fn().mockReturnValue({ status: 'idle', step: 0 }),
+  },
+  mockToolRegistry: {
+    list: vi.fn().mockReturnValue([]),
+    execute: vi.fn(),
+    get: vi.fn(),
+  },
+  mockContextManagerObj: {
+    append: vi.fn(),
+    getMessages: vi.fn().mockReturnValue([]),
+    getSystemPrompt: vi.fn().mockReturnValue(''),
+    clear: vi.fn(),
+    reset: vi.fn(),
+  },
+}));
+
+// Mutable engine behavior
+let engineRunResult = 'Mock AI answer.';
+let engineStreamChunks: string[] = ['Hello', ' ', 'World'];
+
+function resetEngine(): void {
+  engineRunResult = 'Mock AI answer.';
+  engineStreamChunks = ['Hello', ' ', 'World'];
+  mockEngine.run.mockReset().mockImplementation(async (): Promise<string> => engineRunResult);
+  mockEngine.runStream.mockReset().mockImplementation(async function* () {
+    for (const c of engineStreamChunks) yield c;
+  });
+  mockEngine.interrupt.mockReset();
+}
+
+// ── vi.mock ──
+
+vi.mock('../../src/agent/llm/openai-client.js', () => ({
+  DeepSeekClient: vi.fn(function (this: Record<string, unknown>, config: unknown) {
+    this.chat = vi.fn();
+    this.config = config;
+  }),
+}));
+
+vi.mock('../../src/agent/tools/builtin/index.js', () => ({
+  createDefaultToolRegistry: vi.fn().mockReturnValue(mockToolRegistry),
+}));
+
+vi.mock('../../src/agent/context/context-manager.js', () => ({
+  ContextManager: vi.fn(function (this: Record<string, unknown>) {
+    Object.assign(this, mockContextManagerObj);
+  }),
+}));
+
+vi.mock('../../src/agent/core/loop-engine.js', () => ({
+  LoopEngine: vi.fn(function (this: Record<string, unknown>) {
+    Object.assign(this, mockEngine);
+  }),
+}));
+
+import { AgentService } from '../../src/electron/main/agent-service.js';
+
+describe('AgentService (DeepSeek 集成)', () => {
   let agentService: AgentService;
 
   beforeEach(() => {
-    // AgentService 是单例，但每个测试前重置 interrupted 状态
+    vi.clearAllMocks();
+    resetEngine();
+    (AgentService as unknown as { instance: AgentService | null }).instance = null;
+    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.AGENT_API_KEY;
+    delete process.env.AGENT_MODEL;
     agentService = AgentService.getInstance();
-    // 通过 interrupt + 等待 让 interrupted 复位
-    // 直接通过公共方法测试，不访问私有状态
   });
 
-  // ─── 单例模式 ─────────────────────────────
-
-  it('should return the same instance (singleton)', () => {
-    const a = AgentService.getInstance();
-    const b = AgentService.getInstance();
-    expect(a).toBe(b);
+  afterEach(() => {
+    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.AGENT_API_KEY;
+    delete process.env.AGENT_MODEL;
   });
 
-  // ─── ask ──────────────────────────────────
+  // ═══════════════════════════════════════════
+  // 基础属性（无需 engine）
+  // ═══════════════════════════════════════════
 
-  it('should return placeholder response from ask()', async () => {
-    const answer = await agentService.ask('Hello');
-    expect(answer).toContain('Hello');
-    expect(answer).toContain('Placeholder');
+  it('singleton', () => {
+    expect(AgentService.getInstance()).toBe(AgentService.getInstance());
   });
 
-  it('should return placeholder even with empty prompt', async () => {
-    const answer = await agentService.ask('');
-    expect(answer).toContain('Placeholder');
+  it('provider is deepseek', () => {
+    expect(agentService.getConfig('provider')).toBe('deepseek');
   });
 
-  it('should accept optional sessionId parameter', async () => {
-    const answer = await agentService.ask('Test', 'session-123');
-    expect(answer).toContain('Test');
+  it('model defaults to deepseek-v4-flash', () => {
+    expect(agentService.getConfig('model')).toBe('deepseek-v4-flash');
   });
 
-  // ─── askStream ─────────────────────────────
-
-  it('should emit chunks via onChunk callback', async () => {
-    const chunks: string[] = [];
-    await agentService.askStream('Hello World', undefined, (chunk) => {
-      chunks.push(chunk);
-    });
-
-    expect(chunks.length).toBeGreaterThan(0);
-    expect(chunks.some((c) => c.includes('Hello'))).toBe(true);
-    expect(chunks.some((c) => c.includes('Done'))).toBe(true);
+  it('model from AGENT_MODEL env', () => {
+    process.env.AGENT_MODEL = 'deepseek-v4-pro';
+    (AgentService as unknown as { instance: AgentService | null }).instance = null;
+    expect(AgentService.getInstance().getConfig('model')).toBe('deepseek-v4-pro');
   });
 
-  it('should respect interrupt during streaming', async () => {
-    const chunks: string[] = [];
-
-    // 在第一个 chunk 之后立即 interrupt
-    let firstChunk = true;
-    const streamPromise = agentService.askStream('Hello World', undefined, (chunk) => {
-      chunks.push(chunk);
-      if (firstChunk) {
-        firstChunk = false;
-        agentService.interrupt();
-      }
-    });
-
-    await streamPromise;
-
-    expect(chunks.some((c) => c.includes('Interrupted'))).toBe(true);
-  });
-
-  it('should reset interrupted flag after stream completes', async () => {
-    // First stream: interrupt
-    let interrupted = false;
-    await agentService.askStream('First', undefined, () => {
-      if (!interrupted) {
-        interrupted = true;
-        agentService.interrupt();
-      }
-    });
-
-    // Second stream: should NOT be interrupted
-    const chunks: string[] = [];
-    await agentService.askStream('Second', undefined, (chunk) => {
-      chunks.push(chunk);
-    });
-
-    expect(chunks.some((c) => c.includes('Interrupted'))).toBe(false);
-    expect(chunks.some((c) => c.includes('Done'))).toBe(true);
-  });
-
-  // ─── interrupt ─────────────────────────────
-
-  it('should set interrupted flag via interrupt()', () => {
-    // Interrupt first
-    agentService.interrupt();
-
-    // Next stream should show interrupted
-    // (tested above, just verify method exists and doesn't throw)
-    expect(() => agentService.interrupt()).not.toThrow();
-  });
-
-  // ─── 工具管理 ───────────────────────────────
-
-  it('should return tool list with 4 built-in tools', () => {
-    const tools = agentService.getTools();
-    expect(tools).toHaveLength(4);
-    expect(tools[0]).toHaveProperty('name');
-    expect(tools[0]).toHaveProperty('description');
-    expect(tools[0]).toHaveProperty('enabled');
-    expect(tools[0].enabled).toBe(true);
-  });
-
-  it('should include read_file, write_file, search_web, calculator', () => {
-    const tools = agentService.getTools();
-    const names = tools.map((t) => t.name);
-    expect(names).toContain('read_file');
-    expect(names).toContain('write_file');
-    expect(names).toContain('search_web');
-    expect(names).toContain('calculator');
-  });
-
-  // ─── 记忆搜索 ───────────────────────────────
-
-  it('should return empty memory results', () => {
-    const memories = agentService.searchMemory('anything', 10);
-    expect(memories).toEqual([]);
-  });
-
-  // ─── 配置管理 ───────────────────────────────
-
-  it('should return config value for known keys', () => {
-    expect(agentService.getConfig('provider')).toBe('mock');
-    expect(agentService.getConfig('model')).toBe('default');
-  });
-
-  it('should return null for unknown config keys', () => {
+  it('unknown config key → null', () => {
     expect(agentService.getConfig('nonexistent')).toBeNull();
   });
 
-  it('should not throw on setConfig', () => {
-    expect(() => agentService.setConfig('key', 'value')).not.toThrow();
+  it('unhealthy before engine init', () => {
+    const s = agentService.getHealthStatus();
+    expect(s.healthy).toBe(false);
   });
 
-  // ─── 调度任务 ───────────────────────────────
-
-  it('should return empty scheduled tasks list', () => {
-    const tasks = agentService.getScheduledTasks();
-    expect(tasks).toEqual([]);
+  it('4 tools', () => {
+    const names = agentService.getTools().map(t => t.name);
+    expect(names).toEqual(
+      expect.arrayContaining(['read_file', 'write_file', 'search_web', 'calculator'])
+    );
+    expect(agentService.getTools()).toHaveLength(4);
   });
 
-  it('should generate a task id on addScheduledTask', () => {
-    const id = agentService.addScheduledTask('Test', '* * * * *', 'echo hi');
-    expect(id).toMatch(/^task_\d+$/);
+  it('tools enabled', () => {
+    for (const t of agentService.getTools()) expect(t.enabled).toBe(true);
   });
 
-  // ─── 健康状态 ───────────────────────────────
+  it('empty memory', () => expect(agentService.searchMemory('x', 10)).toEqual([]));
+  it('setConfig no throw', () => expect(() => agentService.setConfig('k', 'v')).not.toThrow());
+  it('empty scheduled tasks', () => expect(agentService.getScheduledTasks()).toEqual([]));
 
-  it('should return healthy status', () => {
-    const status = agentService.getHealthStatus();
-    expect(status.healthy).toBe(true);
-    expect(status.checks).toEqual({});
+  it('addScheduledTask returns id', () => {
+    expect(agentService.addScheduledTask('T', '* * * * *', 'cmd')).toMatch(/^task_\d+$/);
   });
 
-  // ─── 队列统计 ───────────────────────────────
+  it('zero queue stats', () => {
+    expect(agentService.getQueueStats()).toEqual({ pending: 0, running: 0, completed: 0 });
+  });
 
-  it('should return zero queue stats', () => {
-    const stats = agentService.getQueueStats();
-    expect(stats.pending).toBe(0);
-    expect(stats.running).toBe(0);
-    expect(stats.completed).toBe(0);
+  // ═══════════════════════════════════════════
+  // ask() — needs API key + engine
+  // ═══════════════════════════════════════════
+
+  describe('ask()', () => {
+    beforeEach(() => {
+      process.env.DEEPSEEK_API_KEY = 'sk-test';
+      (AgentService as unknown as { instance: AgentService | null }).instance = null;
+      agentService = AgentService.getInstance();
+    });
+
+    it('returns engine answer', async () => {
+      expect(await agentService.ask('What is AI?')).toBe('Mock AI answer.');
+    });
+
+    it('throws without API key', async () => {
+      delete process.env.DEEPSEEK_API_KEY;
+      // Also ensure no fallback env vars
+      delete process.env.AGENT_API_KEY;
+      delete process.env.AGENT_MODEL;
+      (AgentService as unknown as { instance: AgentService | null }).instance = null;
+      await expect(AgentService.getInstance().ask('Hi')).rejects.toThrow(/API Key/);
+    });
+
+    it('becomes healthy after init', async () => {
+      await agentService.ask('Hi');
+      expect(agentService.getHealthStatus().healthy).toBe(true);
+    });
+
+    it('uses DEEPSEEK_API_KEY', async () => {
+      process.env.DEEPSEEK_API_KEY = 'sk-env';
+      (AgentService as unknown as { instance: AgentService | null }).instance = null;
+      await AgentService.getInstance().ask('Hi');
+      const { DeepSeekClient } = await import('../../src/agent/llm/openai-client.js');
+      expect(DeepSeekClient).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'sk-env' })
+      );
+    });
+
+    it('falls back to AGENT_API_KEY', async () => {
+      delete process.env.DEEPSEEK_API_KEY; // clear higher-priority var
+      process.env.AGENT_API_KEY = 'sk-agent';
+      delete process.env.AGENT_MODEL;
+      (AgentService as unknown as { instance: AgentService | null }).instance = null;
+      await AgentService.getInstance().ask('Hi');
+      const { DeepSeekClient } = await import('../../src/agent/llm/openai-client.js');
+      expect(DeepSeekClient).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'sk-agent' })
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════
+  // askStream()
+  // ═══════════════════════════════════════════
+
+  describe('askStream()', () => {
+    beforeEach(() => {
+      process.env.DEEPSEEK_API_KEY = 'sk-test';
+      (AgentService as unknown as { instance: AgentService | null }).instance = null;
+      agentService = AgentService.getInstance();
+    });
+
+    it('streams chunks', async () => {
+      const chunks: string[] = [];
+      await agentService.askStream('Hi', undefined, c => chunks.push(c));
+      expect(chunks).toEqual(['Hello', ' ', 'World']);
+    });
+
+    it('handles empty stream', async () => {
+      engineStreamChunks = [];
+      (AgentService as unknown as { instance: AgentService | null }).instance = null;
+      const chunks: string[] = [];
+      await AgentService.getInstance().askStream('Hi', undefined, c => chunks.push(c));
+      expect(chunks).toEqual([]);
+    });
+
+    it('interrupt calls engine.interrupt()', async () => {
+      let first = true;
+      await agentService.askStream('Hi', undefined, () => {
+        if (first) { first = false; agentService.interrupt(); }
+      });
+      expect(mockEngine.interrupt).toHaveBeenCalled();
+    });
+  });
+
+  // ═══════════════════════════════════════════
+  // interrupt()
+  // ═══════════════════════════════════════════
+
+  describe('interrupt()', () => {
+    it('no throw before init', () => {
+      expect(() => agentService.interrupt()).not.toThrow();
+    });
+
+    it('delegates to engine after init', async () => {
+      process.env.DEEPSEEK_API_KEY = 'sk-test';
+      (AgentService as unknown as { instance: AgentService | null }).instance = null;
+      const svc = AgentService.getInstance();
+      await svc.ask('Hi');
+      svc.interrupt();
+      expect(mockEngine.interrupt).toHaveBeenCalled();
+    });
   });
 });

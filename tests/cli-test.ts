@@ -75,7 +75,7 @@ function assertNotIncludes(haystack: string, needle: string, msg = ''): void {
 //  CLI 调用
 // ============================================================
 const tsxBin = resolve('node_modules/.bin/tsx');
-const cliEntry = resolve('src/cli/index.ts');
+const cliEntry = resolve('src/agent/cli/index.ts');
 
 function runCli(args: string[], opts?: { env?: Record<string, string>; timeout?: number }): {
     stdout: string;

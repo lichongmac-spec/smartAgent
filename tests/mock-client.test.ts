@@ -6,7 +6,7 @@
  * 运行: node tests/test.ts --only unit
  */
 
-import { MockLLMClient } from '../src/llm/mock-client.js';
+import { MockLLMClient } from '../src/agent/llm/mock-client.js';
 
 let passCount = 0;
 let failCount = 0;

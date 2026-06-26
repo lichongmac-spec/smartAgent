@@ -196,7 +196,6 @@ export function resolveSandboxPath(
   }
 
   // 6. 符号链接真实路径检查（防止通过软链接绕过沙箱）
-  //
   // 理解：即使路径看起来在沙箱内，也可能通过符号链接指向系统文件。
   // 例如：ln -s /etc /home/user/project/etc-link
   // 我们用 realpathSync 解析真实路径后再校验。

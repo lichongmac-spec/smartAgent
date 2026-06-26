@@ -15,7 +15,7 @@
  */
 
 import { strict as assert } from 'assert';
-import { profile, Profiler } from '../src/cli/utils/profile.js';
+import { profile, Profiler } from '../src/agent/cli/utils/profile.js';
 
 // ============================================================
 //  测试工具

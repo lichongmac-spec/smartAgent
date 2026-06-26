@@ -12,7 +12,7 @@
  *  - 系统消息保留逻辑
  */
 
-import { ContextManager } from '../src/context/context-manager.js';
+import { ContextManager } from '../src/agent/context/context-manager.js';
 
 let passCount = 0;
 let failCount = 0;

@@ -10,7 +10,7 @@
  *   5. 长内容分页逻辑（不进入交互模式）
  */
 
-import { pager, type PagerOptions } from '../src/cli/utils/pager.js';
+import { pager, type PagerOptions } from '../src/agent/cli/utils/pager.js';
 
 // ============================================================
 //  测试辅助

@@ -2,7 +2,7 @@
  * stream-handler.test.ts
  */
 
-import { createMockSSEStream, StreamHandler, streamToStdout } from '../src/cli/utils/stream-handler.js';
+import { createMockSSEStream, StreamHandler, streamToStdout } from '../src/agent/cli/utils/stream-handler.js';
 
 let testCount = 0;
 let passCount = 0;

@@ -6,7 +6,7 @@ import {
     setRedactionEnabled,
     isRedactionEnabled,
     safeOutput,
-} from '../src/cli/utils/secrets.js';
+} from '../src/agent/cli/utils/secrets.js';
 
 // ────────────────────────────────────────────────
 // 测试工具函数

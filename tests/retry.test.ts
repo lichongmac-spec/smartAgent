@@ -7,8 +7,8 @@
  *  - withOptionalRetry: 无配置跳过 / 有配置重试
  */
 
-import { withRetry, resolveRetryConfig, withOptionalRetry } from '../src/llm/retry.js';
-import { LLMError, NetworkError, AuthenticationError } from '../src/llm/errors.js';
+import { withRetry, resolveRetryConfig, withOptionalRetry } from '../src/agent/llm/retry.js';
+import { LLMError, NetworkError, AuthenticationError } from '../src/agent/llm/errors.js';
 
 let passCount = 0;
 let failCount = 0;

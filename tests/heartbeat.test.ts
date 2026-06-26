@@ -2,13 +2,13 @@
  * heartbeat.test.ts - 心跳与健康监控系统测试
  */
 
-import { HeartbeatManager } from '../src/health/heartbeat-manager.js';
+import { HeartbeatManager } from '../src/agent/health/heartbeat-manager.js';
 import {
   createLLMHealthCheck,
   createDiskHealthCheck,
   createMemoryHealthCheck,
-} from '../src/health/builtin-checks.js';
-import type { UnhealthyEvent, RecoveredEvent } from '../src/health/types.js';
+} from '../src/agent/health/builtin-checks.js';
+import type { UnhealthyEvent, RecoveredEvent } from '../src/agent/health/types.js';
 
 // ============================================================
 //  测试工具

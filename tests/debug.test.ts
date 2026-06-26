@@ -12,12 +12,12 @@
  *   7. 边界：空参数、null/undefined、循环引用对象
  */
 
-import { getLoggerConfig } from '../src/cli/logger.js';
+import { getLoggerConfig } from '../src/agent/cli/logger.js';
 import {
     debug,
     isVerbose,
     setVerbose,
-} from '../src/cli/utils/debug.js';
+} from '../src/agent/cli/utils/debug.js';
 
 // ============================================================
 //  测试辅助
