@@ -9,9 +9,9 @@
  *   loader.register(emailSkill);
  */
 
-import type { ISkill, SkillContext } from '../types.js';
-import type { ToolExecutor } from '../../tools/registry.js';
 import type { ToolDefinition } from '../../llm/types.js';
+import type { ToolExecutor } from '../../tools/registry.js';
+import type { ISkill, SkillContext } from '../types.js';
 
 // ============================================================
 //  工具实现

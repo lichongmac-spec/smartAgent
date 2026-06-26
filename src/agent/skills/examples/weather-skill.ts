@@ -9,9 +9,9 @@
  *   loader.register(weatherSkill);
  */
 
-import type { ISkill } from '../types.js';
-import type { ToolExecutor } from '../../tools/registry.js';
 import type { ToolDefinition } from '../../llm/types.js';
+import type { ToolExecutor } from '../../tools/registry.js';
+import type { ISkill } from '../types.js';
 
 // ============================================================
 //  工具实现

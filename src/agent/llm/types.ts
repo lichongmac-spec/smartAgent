@@ -107,8 +107,8 @@ export interface TokenUsage {
 export interface ChatResponse {
   /** 回复内容（菜本身） */
   content: string;
-  /** 停止原因：stop=自然结束, length=达到长度上限, error=出错 */
-  finishReason: 'stop' | 'length' | 'error';
+  /** 停止原因：stop=自然结束, length=达到长度上限, error=出错, tool_calls=工具调用 */
+  finishReason: 'stop' | 'length' | 'error' | 'tool_calls';
   /** Token 用量统计 */
   usage?: TokenUsage;
   /** 使用的模型名 */

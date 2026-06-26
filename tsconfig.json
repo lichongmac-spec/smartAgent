@@ -23,6 +23,9 @@
     "./tests",
     "./electron",
     "./electron-build",
-    "./scripts"
+    "./scripts",
+    "./forge.config.ts",
+    "./vitest.config.ts",
+    "./vite.config.ts"
   ]
 }

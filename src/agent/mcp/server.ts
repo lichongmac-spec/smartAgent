@@ -32,25 +32,25 @@
 
 import { ToolRegistry } from '../tools/registry.js';
 import type {
-  JsonRpcRequest,
-  JsonRpcResponse,
-  JsonRpcError,
-  JsonRpcNotification,
-  MCPTool,
-  InitializeParams,
-  InitializeResult,
-  ListToolsResult,
   CallToolParams,
   CallToolResult,
-  ListResourcesResult,
-  ListPromptsResult,
-  ServerCapabilities,
   Implementation,
+  InitializeParams,
+  InitializeResult,
+  JsonRpcError,
+  JsonRpcNotification,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  ListPromptsResult,
+  ListResourcesResult,
+  ListToolsResult,
+  MCPTool,
+  ServerCapabilities,
 } from './types.js';
 import {
+  ErrorCode,
   JSONRPC_VERSION,
   MCP_VERSION,
-  ErrorCode,
   MCPError,
 } from './types.js';
 
@@ -159,7 +159,7 @@ export class MCPServer {
 
       return {
         jsonrpc: JSONRPC_VERSION,
-        id,
+        id: id!,
         result,
       };
     } catch (err) {

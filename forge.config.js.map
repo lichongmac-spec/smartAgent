@@ -1,0 +1,1 @@
+{"version":3,"file":"forge.config.js","sourceRoot":"","sources":["forge.config.ts"],"names":[],"mappings":"AAEA,MAAM,MAAM,GAAgB;IAC1B,cAAc,EAAE;QACd,IAAI,EAAE,YAAY;QAClB,cAAc,EAAE,YAAY;QAC5B,IAAI,EAAE,IAAI;KACX;IACD,8BAA8B;IAC9B,cAAc;IACd,eAAe;CAChB,CAAC;AAEF,eAAe,MAAM,CAAC"}

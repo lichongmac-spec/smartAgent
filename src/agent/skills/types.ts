@@ -5,8 +5,8 @@
  * 就像手机 App —— 独立开发，放到指定文件夹即可自动加载。
  */
 
-import type { ToolDefinition } from '../llm/types.js';
 import type { ToolExecutor } from '../tools/registry.js';
+import type { ToolDefinition } from '../llm/types.js';
 
 // ============================================================
 //  钩子接口

@@ -15,6 +15,7 @@ import { configManager } from './config-manager.js';
 import { checkNodeVersion, isCI } from './env-check.js';
 import { setupGracefulShutdown } from './error-handler.js';
 import { HeartbeatManager } from '../health/index.js';
+import type { UnhealthyEvent } from '../health/types.js';
 import { configureLogger } from './logger.js';
 import { expandAlias } from './utils/alias.js';
 import { setVerbose } from './utils/debug.js';
@@ -63,7 +64,7 @@ const heartbeat = new HeartbeatManager({
 heartbeat.start();
 
 // 监听健康状态变化
-heartbeat.on('unhealthy', (event) => {
+heartbeat.on('unhealthy', (event: UnhealthyEvent) => {
   console.error(`\n🚨 [心跳] 系统不健康！失败项: ${event.failedChecks.map(c => c.name).join(', ')}`);
 });
 

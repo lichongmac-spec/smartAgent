@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   if (allMem.length > 0) {
     const oldDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
     // 仅演示 — 直接修改内部时间戳
-    (allMem[0] as Record<string, unknown>).timestamp = oldDate;
+    (allMem[0] as unknown as Record<string, unknown>).timestamp = oldDate;
   }
 
   // 执行遗忘

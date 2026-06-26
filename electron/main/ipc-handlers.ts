@@ -1,5 +1,5 @@
 import type { IpcMain } from 'electron';
-import { AgentService } from './agent-service.js';
+import { AgentService } from './agent-service';
 
 const agentService = AgentService.getInstance();
 

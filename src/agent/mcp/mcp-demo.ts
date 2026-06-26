@@ -25,34 +25,34 @@
  * ```
  */
 
-import { ToolRegistry } from '../tools/registry.js';
-import {
-  READ_FILE_DEFINITION,
-  readFileExecutor,
-} from '../tools/builtin/read-file.js';
 import {
   CALCULATOR_DEFINITION,
   calculatorExecutor,
 } from '../tools/builtin/calculator.js';
+import {
+  READ_FILE_DEFINITION,
+  readFileExecutor,
+} from '../tools/builtin/read-file.js';
+import { ToolRegistry } from '../tools/registry.js';
 
-import { MCPServer } from './server.js';
 import { MCPClient } from './client.js';
+import { MCPServer } from './server.js';
 import {
   buildNamespacedName,
-  parseNamespacedName,
-  isMCPTool,
-  mcpToolToDefinition,
   extractToolResultText,
+  isMCPTool,
   MCPToolExecutorFactory,
+  mcpToolToDefinition,
+  parseNamespacedName,
 } from './tool-adapter.js';
-import {
-  MCPError,
-  MCPConnectionError,
-} from './types.js';
 import type {
   JsonRpcMessage,
   JsonRpcRequest,
   MCPTransport,
+} from './types.js';
+import {
+  MCPConnectionError,
+  MCPError,
 } from './types.js';
 
 // ================================================================
