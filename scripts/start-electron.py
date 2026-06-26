@@ -22,8 +22,17 @@ app_path = project_root
 
 # ── 干净的环境变量 ───────────────────────────────────
 # 关键：不继承 NODE_OPTIONS、ELECTRON_RUN_AS_NODE 等可能污染 Electron 启动的变量
+# 但有选择地传递 DeepSeek API Key 以支持 LLM 调用
 clean_env = {}
-for key in ('PATH', 'HOME', 'USER', 'SHELL', 'TMPDIR', 'LANG', 'LOGNAME'):
+keep_keys = ('PATH', 'HOME', 'USER', 'SHELL', 'TMPDIR', 'LANG', 'LOGNAME')
+
+# 传递 DeepSeek 相关环境变量
+for key in ('DEEPSEEK_API_KEY', 'AGENT_API_KEY', 'SMARTAGENT_PROVIDER', 'AGENT_MODEL',
+            'AGENT_PROVIDER', 'AGENT_BASE_URL', 'SMARTAGENT_LOG_LEVEL'):
+    if key in os.environ:
+        clean_env[key] = os.environ[key]
+
+for key in keep_keys:
     if key in os.environ:
         clean_env[key] = os.environ[key]
 
@@ -68,7 +77,7 @@ def main():
     try:
         os.execve(
             electron_bin,
-            ['Electron', app_path],
+            ['Electron', app_path, '--no-sandbox', '--disable-gpu-sandbox'],
             clean_env,
         )
     except OSError as e:

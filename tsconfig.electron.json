@@ -5,7 +5,7 @@
     "moduleResolution": "node10",
     "ignoreDeprecations": "6.0",
     "outDir": "./electron-dist",
-    "rootDir": "./electron",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -16,12 +16,16 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": [
-    "electron/main/index.ts",
-    "electron/main/agent-service.ts",
-    "electron/preload/index.ts"
+    "src/electron/main/**/*.ts",
+    "src/electron/preload/**/*.ts",
+    "src/agent/core/**/*.ts",
+    "src/agent/llm/**/*.ts",
+    "src/agent/tools/**/*.ts",
+    "src/agent/context/**/*.ts",
+    "src/agent/utils/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "electron/renderer"
+    "src/electron/renderer"
   ]
 }

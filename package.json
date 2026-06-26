@@ -2,7 +2,7 @@
   "name": "smartagent",
   "version": "1.0.0",
   "description": "SmartAgent CLI",
-  "main": "electron-dist/main/index.js",
+  "main": "electron-dist/electron/main/index.js",
   "type": "module",
   "bin": {
     "agent": "./dist/cli/index.js"
@@ -22,10 +22,10 @@
     "dev": "nodemon --watch src --ext ts --exec tsx src/cli/index.ts",
     "debug": "node --inspect-brk -r tsx/cjs src/cli/index.ts",
     "debug:start": "tsx --inspect-brk src/cli/index.ts",
-    "electron:build:renderer": "vite build --config electron/vite.config.ts",
+    "electron:build:renderer": "vite build --config src/electron/vite.config.ts",
     "electron:build:main": "tsc -p tsconfig.electron.json",
     "electron:build": "pnpm electron:build:main && pnpm electron:build:renderer",
-    "electron:dev": "concurrently \"vite --config electron/vite.config.ts\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:dev": "concurrently \"vite --config src/electron/vite.config.ts\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:start": "pnpm electron:build && python3 scripts/start-electron.py",
     "electron:package": "electron-forge package",
     "electron:make": "electron-forge make"
